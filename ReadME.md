@@ -4,7 +4,7 @@ seecs (pronounced see-ks) is a small header only ECS implementation for C++. See
 
 To implement only the core of a functional ECS as a resource for learning. 
 
-This is not meant to be the fastest, or the best ECS. It's my take on a 'pure' ECS using sparse sets to optimize data locality, in which entities are just IDs, components are data, and (most importantly) systems query entities based on components and operate that on data.
+It's my take on a 'pure' ECS using sparse sets to optimize data locality, in which entities are just IDs, components are data, and (most importantly) systems query entities based on components and operate that on data.
 
 Here's an example of seecs in action:
 ```cpp
