@@ -35,7 +35,7 @@ int main() {
   seecs::EntityID e2 = ecs.CreateEntity("e2"); // Can name entities, will reflect in debug messages
   seecs::EntityID e3 = ecs.CreateEntity();
   
-  ecs.Add<A>(e1, {5});  // initialize component A(5)
+  ecs.Add<A>(e1, {5});  // initialize component A with x = 5
   ecs.Add<B>(e1); // default constructor called
   ecs.Add<C>(e1);
   
