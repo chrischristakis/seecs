@@ -4,7 +4,7 @@ seecs (pronounced see-ks) is a small header only ECS implementation for C++. See
 
 To implement only the core of a functional ECS as a resource for learning. 
 
-This is not meant to be the fastest, or the best ECS. It's my take on a 'pure' ECS in which entities are identifies, components are data, and (most importantly) systems query entities based on components and operate that on data.
+This is not meant to be the fastest, or the best ECS. It's my take on a 'pure' ECS using sparse sets to optimize data locality, in which entities are just IDs, components are data, and (most importantly) systems query entities based on components and operate that on data.
 
 Here's an example of seecs in action:
 ```cpp
@@ -43,7 +43,8 @@ int main() {
   
   ecs.Add<A>(e3);
   ecs.Add<C>(e3);
-  
+
+  // This will run on all entities with components A and C
   ecs.ForEach<A, C>([&ecs](seecs::EntityID id, A& a, C& c) {
     // ...
   });
@@ -60,6 +61,55 @@ int main() {
     // ...
   }
 }
+```
+
+## Systems
+
+Systems are omitted from this project. This is because seecs provides everything you need to get a system running, and I don't want to force you into some rigid structure just because I deem it best.
+
+If you want to know how I add systems in seecs, I simply just do something like this:
+```cpp
+namespace MovementSystem {
+
+  void Move(ECS& ecs) {
+    ecs.ForEach<Transform, Physics>([](Transform& transform, Physics& physics) {
+      transform.position += physics.velocity;
+    });
+  }
+
+}
+```
+
+And that's it. It's on you to manage these systems however you want. You can make them function like I did here, or make a system it's own class that might even manage the entities belonging to it, whatever.
+
+## Deleting entities
+
+Deleting an entity during runtime is a bit of a struggle with an ECS, since you don't want to directly delete an entity with `.DeleteEntity(id) while iterating with `.View()` or `.ForEach()`, since internally, using a spa
+
+So I've baked a system into the ECS to help with this, primarily with two functions,
+- `.FlagEntity(id, flag)`: Entity with `id` will be flagged for deletion if `flag` is `true` and unmarked if `flag` is `false`
+- `.DeleteFlagged()` Should be called at the end of a frame and will delete all entities that are flagged
+
+So for example:
+```cpp
+ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
+  if (hc.health <= 0)
+    ecs.FlagEntity(id, true);   
+});
+
+// Other systems...
+
+ecs.DeleteFlagged();
+```
+
+This allows graceful deletion of entities, as well as the ability to potentially resurrect entities from another system by using `.FlagEntity(id, false)` before the frame ends.
+
+By default, `.View()`, `.ForEach()` and `.ViewIDs()` will not return flagged entities, but if you'd like a system that considers entities that were flagged this frame before deletion, you can set the optional `includeFlagged` parameter in these
+functions to `true`, i.e:
+```cpp
+ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
+  // ...
+}, true); <---- This system will iterate flagged entities too
 ```
 
 ### Things I'll get around to:
