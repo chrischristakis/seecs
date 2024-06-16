@@ -84,7 +84,7 @@ And that's it. It's on you to manage these systems however you want. You can mak
 
 ## Deleting entities
 
-Deleting an entity during runtime is a bit of a struggle with an ECS, since you don't want to directly delete an entity with `.DeleteEntity(id) while iterating with `.View()` or `.ForEach()`, since internally, using a spa
+Deleting an entity during runtime is a bit of a struggle with an ECS, since you don't want to directly delete an entity with `.DeleteEntity(id)` while iterating with `.View()` or `.ForEach()`, since they both iterate the list of active entities internally.
 
 So I've baked a system into the ECS to help with this, primarily with two functions,
 - `.FlagEntity(id, flag)`: Entity with `id` will be flagged for deletion if `flag` is `true` and unmarked if `flag` is `false`
