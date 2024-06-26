@@ -1,6 +1,9 @@
 #define SEECS_INFO_ENABLED
 #include "seecs.h"
 
+#include <chrono>
+
+// Components hold data
 struct A {
 	int x = 0;
 };
@@ -14,7 +17,7 @@ struct C {
 };
 
 int main() {
-
+	
 	// Base ECS instance, acts as a coordinator
 	seecs::ECS ecs;
 

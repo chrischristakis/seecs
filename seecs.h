@@ -39,7 +39,7 @@ namespace seecs {
 	// Set this to NULL_ENTITY if you want no limit.
 	// Once limit is hit, an assert will fire and
 	// the program will terminate.
-	constexpr size_t MAX_ENTITIES = 30000;
+	constexpr size_t MAX_ENTITIES = 1000000;
 
 	// Should be a multiple of 32 (4 bytes) - 1, since
 	// bitset overallocates by 4 bytes each time.
@@ -73,7 +73,7 @@ namespace seecs {
 		static constexpr size_t tombstone = std::numeric_limits<size_t>::max();
 
 		// Used for sparse pagination
-		static constexpr size_t SPARSE_MAX_SIZE = 2000;
+		static constexpr size_t SPARSE_MAX_SIZE = 5000;
 
 		// Dense is tightly packed and contains components.
 		// Its size is how many active components there are.
@@ -85,9 +85,8 @@ namespace seecs {
 		// Sparse is paginated since it's possible for an entity 
 		// with a massive ID to be the only entity with this component, 
 		// so to avoid allocating a sparse vector with a size == massiveID 
-		// where all the previous elements go unused, split it into pages
-		// or chunks, so you only have to allocate for that page.
-		std::unordered_map<Page, Sparse> m_sparseSets;
+		// where all the previous elements go unused, split it into chunks/pages
+		std::vector<Sparse> m_sparseSets;
 
 		/*
 		* Inserts a given dense index into the sparse vector, associating
@@ -97,12 +96,15 @@ namespace seecs {
 		* vector, it simply defines a mapping from ID -> index
 		*/
 		void InsertDenseIndex(EntityID id, size_t index) {
-			Page page = id / SPARSE_MAX_SIZE; // integer division, will drop fractional anyway
+			Page page = id / SPARSE_MAX_SIZE;
 			size_t sparseIndex = id % SPARSE_MAX_SIZE;
 
-			// Only emplaces if element doesn't already exist, using try_emplace so no copying happens
-			auto it = m_sparseSets.try_emplace(page, SPARSE_MAX_SIZE, tombstone);
-			Sparse& sparse = it.first->second;
+			if (page >= m_sparseSets.size())
+				m_sparseSets.resize(page + 1);
+			
+			Sparse& sparse = m_sparseSets[page];
+			if (sparseIndex >= sparse.size())
+				sparse.resize(sparseIndex + 1);
 
 			sparse[sparseIndex] = index;
 		}
@@ -115,11 +117,13 @@ namespace seecs {
 			Page page = id / SPARSE_MAX_SIZE;
 			size_t sparseIndex = id % SPARSE_MAX_SIZE;
 
-			auto it = m_sparseSets.find(page);
-			if (it == m_sparseSets.end())
-				return tombstone;
+			if (page < m_sparseSets.size()) {
+				Sparse& sparse = m_sparseSets[page];
+				if (sparseIndex < sparse.size())
+					return sparse[sparseIndex];
+			}
 
-			return it->second[sparseIndex];
+			return tombstone;
 		}
 
 	public:
@@ -381,7 +385,7 @@ namespace seecs {
 			std::swap(m_alive[backIndex], m_alive[deletedIndex]);
 			m_alive.pop_back();
 
-			m_entityInfo[backID].index = backIndex;
+			m_entityInfo[backID].index = deletedIndex;
 			
 			// Other housekeeping
 			std::string name = GetEntityName(id);
