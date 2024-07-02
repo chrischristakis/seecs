@@ -51,7 +51,7 @@ namespace seecs {
 	// Base class allows runtime polymorphism
 	class IComponentPool {
 	public:
-		virtual ~IComponentPool() { };
+		virtual ~IComponentPool() = default;
 		virtual void Delete(EntityID) = 0;
 	};
 
@@ -197,9 +197,8 @@ namespace seecs {
 	private:
 
 		// Each bit in the mask represents a component,
-		// '1' means it is active '0' means inactive.
-		// Mask[0] declares if entity is alive or not
-		using ComponentMask = std::bitset<1 + MAX_COMPONENTS>;
+		// '1' means active, '0' means inactive.
+		using ComponentMask = std::bitset<MAX_COMPONENTS>;
 
 		using TypeName = const char*;
 
