@@ -91,9 +91,9 @@ A good way to delete entities is to mark them down and deal with them gracefully
 So for example:
 ```cpp
 vector<EntityID> marked;
-	ecs.ForEach<HealthComponent>([&ecs, &marked](EntityID id, HealthComponent& hc) {
-		if(hc.health <= 0)
-		  marked.push_back(id);
+ecs.ForEach<HealthComponent>([&ecs, &marked](EntityID id, HealthComponent& hc) {
+    if(hc.health <= 0)
+      marked.push_back(id);
 });
 
 // Safely delete after iteration!
