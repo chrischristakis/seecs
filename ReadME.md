@@ -1,10 +1,10 @@
 # seecs
 
-seecs (pronounced see-ks) is a small header only ECS implementation for C++. Seecs stands for **Simple-Enough-Entity-Component-System**, which defines the primary goal:
+seecs (pronounced see-ks) is a small header only ECS sparse set implementation for C++. Seecs stands for **Simple-Enough-Entity-Component-System**, which defines the primary goal:
 
-To implement only the core of a functional ECS as a resource for learning. 
+To implement the core of a functional ECS using sparse sets as a resource for learning, while still keeping it efficient.
 
-It's my take on a 'pure' ECS using sparse sets to optimize data locality, in which entities are just IDs, components are data, and (most importantly) systems query entities based on components and operate that on data.
+It's my take on a 'pure' ECS, in which entities are just IDs, components are data, and (most importantly) systems query entities based on components and operate that on data.
 
 Here's an example of seecs in action:
 ```cpp
@@ -65,7 +65,7 @@ int main() {
 
 ## Systems
 
-Systems are omitted from this project. This is because seecs provides everything you need to get a system running, and I don't want to force you into some rigid structure just because I deem it best.
+Systems are not enforced in seecs. This is because it provides you with everything you need to get a system running, and I don't want to force you into some rigid structure just because I deem it best.
 
 If you want to know how I add systems in seecs, I simply just do something like this:
 ```cpp
@@ -84,32 +84,21 @@ And that's it. It's on you to manage these systems however you want. You can mak
 
 ## Deleting entities
 
-Deleting an entity during runtime is a bit of a struggle with an ECS, since you don't want to directly delete an entity with `.DeleteEntity(id)` while iterating with `.View()` or `.ForEach()`, since they both iterate the list of active entities internally.
+Deleting an entity during runtime can be tricky, since you don't want to directly delete an entity with `.DeleteEntity(id)` while iterating with `.View()` or `.ForEach()`, since they both iterate the list of active entities internally.
 
-So I've baked a system into the ECS to help with this, primarily with two functions,
-- `.FlagEntity(id, flag)`: Entity with `id` will be flagged for deletion if `flag` is `true` and unmarked if `flag` is `false`
-- `.DeleteFlagged()` Should be called at the end of a frame and will delete all entities that are flagged
+A good way to delete entities is to mark them down and deal with them gracefully after iterating them via `.View<...>()` or `.ForEach<...>(...)`
 
 So for example:
 ```cpp
-ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
-  if (hc.health <= 0)
-    ecs.FlagEntity(id, true);   
+vector<EntityID> marked;
+	ecs.ForEach<HealthComponent>([&ecs, &marked](EntityID id, HealthComponent& hc) {
+		if(hc.health <= 0)
+		  marked.push_back(id);
 });
 
-// Other systems...
-
-ecs.DeleteFlagged();
-```
-
-This allows graceful deletion of entities, as well as the ability to potentially resurrect entities from another system by using `.FlagEntity(id, false)` before the frame ends.
-
-By default, `.View()`, `.ForEach()` and `.ViewIDs()` will not return flagged entities, but if you'd like a system that considers entities that were flagged this frame before deletion, you can set the optional `includeFlagged` parameter in these
-functions to `true`, i.e:
-```cpp
-ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
-  // ...
-}, true); <---- This system will iterate flagged entities too
+// Safely delete after iteration!
+for (EntityID id : marked)
+  ecs.DeleteEntity(id);
 ```
 
 ### Things I'll get around to:
@@ -120,3 +109,5 @@ ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
 - Documentation
 
 This project just one part of a project I'm working on, and I decided to release it on its own. This means improvements to seecs will roll around when they are needed in the main project.
+
+A big thanks to [EnTT](https://github.com/skypjack/entt) and Austin Morian's [ECS article](https://austinmorlan.com/posts/entity_component_system/), which were both invaluable when learning about the concepts used for this project.
