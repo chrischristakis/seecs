@@ -146,17 +146,15 @@ namespace seecs {
 		}
 
 		void Delete(EntityID id) override {
-			size_t backIndex = m_dense.size() - 1;
+
 			size_t deletedIndex = GetDenseIndex(id);
 			SEECS_ASSERT(deletedIndex != tombstone && !m_dense.empty(), "Trying to delete non-existent entity in sparse set");
 
-			EntityID backEntity = m_denseToEntity[backIndex];
-
-			std::swap(m_dense[backIndex], m_dense[deletedIndex]);
-			std::swap(m_denseToEntity[backIndex], m_denseToEntity[deletedIndex]);
-
-			SetDenseIndex(backEntity, deletedIndex);
+			SetDenseIndex(m_denseToEntity.back(), deletedIndex);
 			SetDenseIndex(id, tombstone);
+
+			std::swap(m_dense.back(), m_dense[deletedIndex]);
+			std::swap(m_denseToEntity.back(), m_denseToEntity[deletedIndex]);
 
 			m_dense.pop_back();
 			m_denseToEntity.pop_back();
@@ -417,8 +415,9 @@ namespace seecs {
 
 			// Destroy component associations
 			for (int i = 0; i < MAX_COMPONENTS; i++)
-				if (mask[i] == 1)
+				if (mask[i] == 1) {
 					m_componentPools[i]->Delete(id);
+				}
 
 			m_entityMasks.Delete(id);		
 			m_entityNames.erase(id);
