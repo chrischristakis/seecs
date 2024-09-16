@@ -39,7 +39,7 @@ namespace seecs {
 	// Set this to NULL_ENTITY if you want no limit.
 	// Once limit is hit, an assert will fire and
 	// the program will terminate.
-	constexpr size_t MAX_ENTITIES = 1000000;
+	constexpr size_t MAX_ENTITIES = NULL_ENTITY;
 
 	// Should be a multiple of 32 (4 bytes), since
 	// bitset overallocates by 4 bytes each time.
@@ -51,6 +51,7 @@ namespace seecs {
 		virtual ~ISparseSet() = default;
 		virtual void Delete(EntityID) = 0;
 		virtual void Clear() = 0;
+		virtual size_t Size() = 0;
 	};
 
 	/*
@@ -121,8 +122,7 @@ namespace seecs {
 		}
 
 		T* Set(EntityID id, T obj) {
-			// If index already exists, then simply overwrite
-			// that element in dense list, no need to delete
+			// Overwrite existing elements
 			size_t index = GetDenseIndex(id);
 			if (index != tombstone) {
 				m_dense[index] = obj;
@@ -148,7 +148,8 @@ namespace seecs {
 		void Delete(EntityID id) override {
 
 			size_t deletedIndex = GetDenseIndex(id);
-			SEECS_ASSERT(deletedIndex != tombstone && !m_dense.empty(), "Trying to delete non-existent entity in sparse set");
+
+			if (m_dense.empty() || deletedIndex == tombstone) return;
 
 			SetDenseIndex(m_denseToEntity.back(), deletedIndex);
 			SetDenseIndex(id, tombstone);
@@ -158,6 +159,10 @@ namespace seecs {
 
 			m_dense.pop_back();
 			m_denseToEntity.pop_back();
+		}
+
+		size_t Size() override {
+			return m_dense.size();
 		}
 
 		void Clear() override {
@@ -279,8 +284,7 @@ namespace seecs {
 
 			// Downcast the generic pointer to the specific sparse set
 			ISparseSet* genericPtr = m_componentPools[bitPos].get();
-			SparseSet<T>* pool = dynamic_cast<SparseSet<T>*>(genericPtr);
-			SEECS_ASSERT(pool, "Dynamic cast failed for component pool '" << typeid(T).name() << "'");
+			SparseSet<T>* pool = static_cast<SparseSet<T>*>(genericPtr);
 
 			return *pool;
 		}
@@ -454,11 +458,11 @@ namespace seecs {
 			SEECS_ASSERT_VALID_ENTITY(id);
 			SEECS_ASSERT_ALIVE_ENTITY(id);
 
-			// Do this first so component pool gets registered before Has<T>()
 			SparseSet<T>& pool = GetComponentPool<T>(true);
 
-			SEECS_ASSERT(!pool.Get(id),
-				ENTITY_INFO(id) << " already has component '" << typeid(T).name() << "' added");
+			// If component already exists, overwrite
+			if (pool.Get(id))
+				return *pool.Set(id, std::move(component));
 
 			ComponentMask& mask = GetEntityMask(id);
 
@@ -501,8 +505,8 @@ namespace seecs {
 			SEECS_ASSERT_VALID_ENTITY(id);
 
 			SparseSet<T>& pool = GetComponentPool<T>();
-			SEECS_ASSERT(pool.Get(id),
-				ENTITY_INFO(id) << " has no component '" << typeid(T).name() << "' to remove");
+
+			if (!pool.Get(id)) return;
 
 			ComponentMask& mask = GetEntityMask(id);
 			
@@ -527,8 +531,7 @@ namespace seecs {
 
 		template <typename T>
 		bool Has(EntityID id) {
-			SparseSet<T>& pool = GetComponentPool<T>();
-			return pool.Get(id)? true : false;
+			return GetComponentBit<T>(GetEntityMask(id));
 		}
 
 		/*
@@ -614,6 +617,10 @@ namespace seecs {
 					}
 				}
 			}
+		}
+
+		size_t GetEntityCount() {
+			return m_entityMasks.Size();
 		}
 
 		void PrintGroupings() {
