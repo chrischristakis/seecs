@@ -49,7 +49,7 @@ int main() {
 
 	// OR
 
-	ecs.ForEach<A, C>([](A& a, C& c) {
+	ecs.ForEach<A, C>([&ecs](seecs::EntityID id, A& a, C& c) {
 		// ...
 	});
 

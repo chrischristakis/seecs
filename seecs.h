@@ -451,7 +451,7 @@ namespace seecs {
 		/*
 		*  Attaches a component to an entity
 		* 
-		* - AddComponent<Transform>(player, {x, y, z});
+		* - Add<Transform>(player, {x, y, z});
 		*/
 		template <typename T>
 		T& Add(EntityID id, T&& component={}) {
@@ -481,7 +481,7 @@ namespace seecs {
 		/*
 		*  Retrieves the specified component for the given entity
 		* 
-		* - ecs.GetComponent<Transform>(player);
+		* - ecs.Get<Transform>(player);
 		*/
 		template <typename T>
 		T& Get(EntityID id) {
@@ -490,7 +490,7 @@ namespace seecs {
 			SparseSet<T>& pool = GetComponentPool<T>();
 			T* component = pool.Get(id);
 			SEECS_ASSERT(component,
-				ENTITY_INFO(id) << " missing component 'in " << typeid(T).name() << "' pool");
+				ENTITY_INFO(id) << " missing component in '" << typeid(T).name() << "' pool");
 
 			return *component;
 		}
@@ -498,7 +498,7 @@ namespace seecs {
 		/*
 		*  Removes a component from an entity
 		* 
-		* - ecs.RemoveComponent<Transform>(player);
+		* - ecs.Remove<Transform>(player);
 		*/
 		template <typename T>
 		void Remove(EntityID id) {
@@ -605,7 +605,7 @@ namespace seecs {
 			for (auto itr = groups.rbegin(); itr != groups.rend(); itr++) {
 				std::vector<EntityID> data = itr->Data();
 
-				for (int i = data.size()-1; i >= 0; i--) {
+				for (int i = data.size() - 1; i >= 0; i--) {
 					EntityID id = data[i];
 					
 					// This branch is for [](EntityID id, Component& c1, Component& c2);

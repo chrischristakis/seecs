@@ -84,21 +84,20 @@ And that's it. It's on you to manage these systems however you want. You can mak
 
 ## Deleting entities
 
-Deleting an entity during runtime can be tricky, since you don't want to directly delete an entity with `.DeleteEntity(id)` while iterating with `.View()` or `.ForEach()`, since they both iterate the list of active entities internally.
+seecs makes deleting entities easy (Thanks @nassorc!) and can de done directly while iterating:
 
-A good way to delete entities is to mark them down and deal with them gracefully after iterating them via `.View<...>()` or `.ForEach<...>(...)`
-
-So for example:
 ```cpp
-vector<EntityID> marked;
 ecs.ForEach<HealthComponent>([&ecs, &marked](EntityID id, HealthComponent& hc) {
-    if(hc.health <= 0)
-      marked.push_back(id);
+    ecs.DeleteEntity(id);
 });
+```
 
-// Safely delete after iteration!
-for (EntityID id : marked)
-  ecs.DeleteEntity(id);
+You can also safely add/remove components while iterating without encountering undefined behaviour:
+```cpp
+ecs.ForEach<HealthComponent>([&ecs, &marked](EntityID id, HealthComponent& hc) {
+    ecs.Remove<HealthComponent>(id);
+    ecs.Add<NewComponent>(id);
+});
 ```
 
 ### Things I'll get around to:
@@ -106,7 +105,6 @@ for (EntityID id : marked)
 - Events
 - Copying
 - Serialization (...?)
-- Documentation
 
 This project just one part of a project I'm working on, and I decided to release it on its own. This means improvements to seecs will roll around when they are needed in the main project.
 
