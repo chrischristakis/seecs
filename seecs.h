@@ -593,27 +593,36 @@ namespace seecs {
 			std::vector<std::tuple<EntityID, Components&...>> result;
 			ComponentMask targetMask = GetMask<Components...>();
 
+			std::vector<SparseSet<EntityID>> groups; 
+
 			for (auto& [mask, ids] : m_groupings) {
+				// collect group if mask is a subset of targetMask 
 				if ((mask & targetMask) == targetMask) {
-					for (EntityID id : ids.Data()) {
-						
-						// This branch is for [](EntityID id, Component& c1, Component& c2);
-						// constexpr denotes this is evaluated at compile time, which allows
-						// the calling of func with different parameters.
-						if constexpr (std::is_invocable_v<Func, EntityID, Components&...>) {
-							func(id, Get<Components>(id)...);
-						}
+					groups.push_back(ids);
+				}
+			}
 
-						// This branch is for [](Component& c1, Component& c2);
-						else if constexpr (std::is_invocable_v<Func, Components&...>) {
-							func(Get<Components>(id)...);
-						}
+			for (auto itr = groups.rbegin(); itr != groups.rend(); itr++) {
+				std::vector<EntityID> data = itr->Data();
 
-						else {
-							SEECS_ASSERT(false,
-								"Bad lambda provided to .ForEach(), parameter pack does not match lambda args");
-						}
+				for (int i = data.size()-1; i >= 0; i--) {
+					EntityID id = data[i];
+					
+					// This branch is for [](EntityID id, Component& c1, Component& c2);
+					// constexpr denotes this is evaluated at compile time, which allows
+					// the calling of func with different parameters.
+					if constexpr (std::is_invocable_v<Func, EntityID, Components&...>) {
+						func(id, Get<Components>(id)...);
+					}
 
+					// This branch is for [](Component& c1, Component& c2);
+					else if constexpr (std::is_invocable_v<Func, Components&...>) {
+						func(Get<Components>(id)...);
+					}
+
+					else {
+						SEECS_ASSERT(false,
+							"Bad lambda provided to .ForEach(), parameter pack does not match lambda args");
 					}
 				}
 			}
