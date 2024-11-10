@@ -14,6 +14,23 @@ struct C {
 	int z = 0;
 };
 
+
+/*
+
+
+
+TODO:
+
+ - Rethink or remove groups
+ - Change types to type index
+ - Review code and clean up anything that's amiss
+ - Benchmarking class
+ - Update readme
+
+
+*/
+
+
 int main() {
 	
 	// Base ECS instance, acts as a coordinator
@@ -22,6 +39,8 @@ int main() {
 	ecs.RegisterComponent<A>();
 	ecs.RegisterComponent<B>();
 	ecs.RegisterComponent<C>();
+	ecs.RegisterComponent<int>();
+	ecs.RegisterComponent<double>();
 
 	seecs::EntityID e1 = ecs.CreateEntity();
 	seecs::EntityID e2 = ecs.CreateEntity("e2"); // Custom name for debugging
@@ -43,19 +62,8 @@ int main() {
 	ecs.Add<A>(e5);
 	ecs.Add<C>(e5);
 
-	ecs.ForEach<A, C>([&ecs](seecs::EntityID id, A& a, C& c) {
+
+	ecs.View<A, B>().ForEach([&](seecs::EntityID id, A& a, B& b) {
 		// ...
 	});
-
-	// OR
-
-	ecs.ForEach<A, C>([&ecs](seecs::EntityID id, A& a, C& c) {
-		// ...
-	});
-
-	// OR
-
-	for (auto& [id, a, c] : ecs.View<A, C>()) {
-		// ...
-	}
 }

@@ -1,6 +1,7 @@
 #ifndef SEECS_ECS_H
 #define SEECS_ECS_H
 
+#include <array>
 #include <vector>
 #include <unordered_map>
 #include <limits>
@@ -11,6 +12,7 @@
 #include <bitset>
 #include <memory>
 #include <type_traits>
+#include <functional>
 
 // Can replace these defines with custom macros elsewhere
 #ifndef SEECS_ASSERTS
@@ -52,6 +54,24 @@ namespace seecs {
 		virtual void Delete(EntityID) = 0;
 		virtual void Clear() = 0;
 		virtual size_t Size() = 0;
+		virtual bool ContainsEntity(EntityID id) = 0;
+		virtual std::vector<EntityID> GetEntityList() = 0;
+	};
+
+	/*
+	* Basic type container, can use each type by providing compile-time index:
+	* 
+	*    using typeContainer = type_list<...>;
+	*	 typename typeContainer::template get<0> type;
+	*/
+	template <class... Types>
+	struct type_list {
+		using type_tuple = std::tuple<Types...>;
+
+		template <std::size_t Index>
+		using get = std::tuple_element_t<Index, type_tuple>;
+
+		static constexpr std::size_t size = sizeof...(Types);
 	};
 
 	/*
@@ -145,6 +165,13 @@ namespace seecs {
 			return (index != tombstone) ? &m_dense[index] : nullptr;
 		}
 
+		T& GetRef(EntityID id) {
+			size_t index = GetDenseIndex(id);
+			if (index == tombstone)
+				SEECS_ASSERT(false, "GetRef called on invalid entity with ID " << id);
+			return m_dense[index];
+		}
+
 		void Delete(EntityID id) override {
 
 			size_t deletedIndex = GetDenseIndex(id);
@@ -163,6 +190,14 @@ namespace seecs {
 
 		size_t Size() override {
 			return m_dense.size();
+		}
+
+		std::vector<EntityID> GetEntityList() override {
+			return m_denseToEntity;
+		}
+
+		bool ContainsEntity(EntityID id) override {
+			return GetDenseIndex(id) != tombstone;
 		}
 
 		void Clear() override {
@@ -193,6 +228,103 @@ namespace seecs {
 
 	};
 
+	/*
+	*  A SimpleView is a basic implementation of a view, allowing iteration based
+	*  on the passed in Component parameter pack.
+	*/
+	template <typename... Components>
+	class SimpleView {
+	private:
+
+		using componentTypes = type_list<Components...>;
+
+		std::array<ISparseSet*, sizeof...(Components)> m_viewPools;
+
+		// Sparse set with the smallest number of components,
+		// basis for ForEach iterations.
+		ISparseSet* m_smallest = nullptr;
+
+		/*
+		*	Returns true iff all the pools in the view contain the given Entity
+		*/
+		bool AllContain(EntityID id) {
+			return std::all_of(m_viewPools.begin(), m_viewPools.end(), [id](ISparseSet* pool) {
+				return pool->ContainsEntity(id);
+			});
+		}
+
+		/*
+		*	Index the generic pool array and downcast to a specific component pool
+		*   by using compile time indices
+		*/
+		template <std::size_t Index>
+		auto GetPoolAt() {
+			using componentType = typename componentTypes::template get<Index>;
+			return static_cast<SparseSet<componentType>*>(m_viewPools[Index]);
+		}
+
+		template <std::size_t... Indices>
+		auto MakeComponentTuple(EntityID id, std::index_sequence<Indices...>) {
+			return std::make_tuple((std::ref(GetPoolAt<Indices>()->GetRef(id)))...);
+		}
+
+	public:
+
+		SimpleView(std::array<ISparseSet*, sizeof...(Components)> pools) :
+			m_viewPools{ pools }
+		{
+			SEECS_ASSERT(componentTypes::size == m_viewPools.size(), "Component type list and pool array size mismatch");
+
+			auto smallestPool = std::min_element(m_viewPools.begin(), m_viewPools.end(),
+				[](ISparseSet* a, ISparseSet* b) { return a->Size() < b->Size(); }
+			);
+
+			SEECS_ASSERT(smallestPool != m_viewPools.end(), "Initializing invalid/empty view");
+
+			m_smallest = *smallestPool;
+		}
+
+		/*
+		*  Executes a passed lambda on all the entities that match the
+		*  passed parameter pack.
+		*
+		*  Provided function should follow one of two forms:
+		*  [](Component& c1, Component& c2);
+		*  OR
+		*  [](EntityID id, Component& c1, Component& c2);
+		*/
+		template <typename Func>
+		void ForEach(Func&& func) {
+			auto inds = std::make_index_sequence<sizeof...(Components)>{};
+
+			// Iterate smallest component pool and compare against other pools in view
+			for (EntityID id : m_smallest->GetEntityList()) {
+				if (AllContain(id)) {
+
+					// This branch is for [](EntityID id, Component& c1, Component& c2);
+					// constexpr denotes this is evaluated at compile time, which prunes
+					// invalid function call branches before runtime to prevent the
+					// typical invoke errors you'd see after building.
+					if constexpr (std::is_invocable_v<Func, EntityID, Components&...>) {
+						std::apply(func, std::tuple_cat(std::make_tuple(id), MakeComponentTuple(id, inds)));
+					}
+
+					// This branch is for [](Component& c1, Component& c2);
+					else if constexpr (std::is_invocable_v<Func, Components&...>) {
+						std::apply(func, MakeComponentTuple(id, inds));
+					}
+
+					else {
+						SEECS_ASSERT(false,
+							"Bad lambda provided to .ForEach(), parameter pack does not match lambda args");
+					}
+				}
+			}
+		}
+
+
+	};
+
 
 	class ECS {
 	private:
@@ -212,7 +344,7 @@ namespace seecs {
 		// Holds the component mask for an entity
 		SparseSet<ComponentMask> m_entityMasks;
 
-		
+
 		// Groups entities that share a component mask.
 		// A, B, C: [1, 2, 3]
 		// B: [4]
@@ -240,17 +372,19 @@ namespace seecs {
 
 		static constexpr size_t tombstone = std::numeric_limits<size_t>::max();
 
+		template <typename... Components>
+		friend class SimpleView;
 
-		#define ENTITY_INFO(id) \
+#define ENTITY_INFO(id) \
 			"['" << GetEntityName(id) << "', ID: " << id << "]"
 
-		#define SEECS_ASSERT_VALID_ENTITY(id) \
+#define SEECS_ASSERT_VALID_ENTITY(id) \
 			SEECS_ASSERT(id != NULL_ENTITY, "NULL_ENTITY cannot be operated on by the ECS") \
 			SEECS_ASSERT(id < m_maxEntityID && id >= 0, "Invalid entity ID out of bounds: " << id);
 
-		#define SEECS_ASSERT_ALIVE_ENTITY(id) \
+#define SEECS_ASSERT_ALIVE_ENTITY(id) \
 			SEECS_ASSERT(m_entityMasks.Get(id) != nullptr, "Attempting to access inactive entity with ID: " << id);
-	
+
 	private:
 
 		template <typename T>
@@ -264,10 +398,10 @@ namespace seecs {
 		}
 
 		/*
-		* Retrieves reference for the specific component pool given a component name
+		* Retrieves an uncasted pointer to a pool of type T
 		*/
 		template <typename T>
-		SparseSet<T>& GetComponentPool(bool registerIfNotFound = false) {
+		ISparseSet* GetComponentPoolPtr(bool registerIfNotFound = false) {
 			size_t bitPos = GetComponentBitPosition<T>();
 
 			if (bitPos == tombstone) {
@@ -282,8 +416,15 @@ namespace seecs {
 			SEECS_ASSERT(bitPos < m_componentPools.size() && bitPos >= 0,
 				"(Internal): Attempting to index into m_componentPools with out of range bit position");
 
-			// Downcast the generic pointer to the specific sparse set
-			ISparseSet* genericPtr = m_componentPools[bitPos].get();
+			return m_componentPools[bitPos].get();
+		}
+
+		/*
+		* Retrieves reference for the specific component pool given a component name
+		*/
+		template <typename T>
+		SparseSet<T>& GetComponentPool(bool registerIfNotFound = false) {
+			ISparseSet* genericPtr = GetComponentPoolPtr<T>(registerIfNotFound);
 			SparseSet<T>* pool = static_cast<SparseSet<T>*>(genericPtr);
 
 			return *pool;
@@ -358,13 +499,13 @@ namespace seecs {
 
 		/*
 		*  Creates an entity and returns the ID to refer to that entity.
-		* 
-		*  @param(name): 
+		*
+		*  @param(name):
 		*  * Optional and used for debugging purposes, it
-		*    shouldn't be used often since there's no optimization 
+		*    shouldn't be used often since there's no optimization
 		*    in place yet for entities that share a name.
 		*/
-		EntityID CreateEntity(std::string_view name="") {
+		EntityID CreateEntity(std::string_view name = "") {
 			EntityID id = tombstone;
 
 			if (m_availableEntities.size() == 0) {
@@ -401,7 +542,7 @@ namespace seecs {
 		/*
 		* Deletes an active entity and its associated components.
 		* - Overwrites the given entity to NULL_ENTITY.
-		* 
+		*
 		* This should NOT be used in the middle of a system while iterating
 		* through entities, as it will remove from the list immediately. Use
 		* FlagEntity(id, true) to mark an entity for deletion, and then DeleteFlagged()
@@ -410,7 +551,7 @@ namespace seecs {
 		void DeleteEntity(EntityID& id) {
 			SEECS_ASSERT_VALID_ENTITY(id);
 			SEECS_ASSERT_ALIVE_ENTITY(id);
-			
+
 			std::string name = GetEntityName(id);
 			ComponentMask& mask = GetEntityMask(id);
 
@@ -423,7 +564,7 @@ namespace seecs {
 					m_componentPools[i]->Delete(id);
 				}
 
-			m_entityMasks.Delete(id);		
+			m_entityMasks.Delete(id);
 			m_entityNames.erase(id);
 			m_availableEntities.push_back(id);
 
@@ -450,11 +591,11 @@ namespace seecs {
 
 		/*
 		*  Attaches a component to an entity
-		* 
+		*
 		* - Add<Transform>(player, {x, y, z});
 		*/
 		template <typename T>
-		T& Add(EntityID id, T&& component={}) {
+		T& Add(EntityID id, T&& component = {}) {
 			SEECS_ASSERT_VALID_ENTITY(id);
 			SEECS_ASSERT_ALIVE_ENTITY(id);
 
@@ -470,7 +611,7 @@ namespace seecs {
 			RemoveFromGroup(mask, id);
 
 			SetComponentBit<T>(mask, 1);
-			
+
 			// Add ID to new group
 			AssignToGroup(mask, id);
 
@@ -480,7 +621,7 @@ namespace seecs {
 
 		/*
 		*  Retrieves the specified component for the given entity
-		* 
+		*
 		* - ecs.Get<Transform>(player);
 		*/
 		template <typename T>
@@ -497,7 +638,7 @@ namespace seecs {
 
 		/*
 		*  Removes a component from an entity
-		* 
+		*
 		* - ecs.Remove<Transform>(player);
 		*/
 		template <typename T>
@@ -509,7 +650,7 @@ namespace seecs {
 			if (!pool.Get(id)) return;
 
 			ComponentMask& mask = GetEntityMask(id);
-			
+
 			// Remove from old group
 			RemoveFromGroup(mask, id);
 
@@ -536,7 +677,7 @@ namespace seecs {
 
 		/*
 		* Gets all the entity IDs matching the component parameter pack
-		* 
+		*
 		* for (EntityID id : ecs.View<Transform, Sprite>()) {
 		*   ...
 		* }
@@ -555,77 +696,10 @@ namespace seecs {
 			return result;
 		}
 
-		/*
-		*  Returns tuple containing the id of the entity and all
-		*  valid components matching the passed parameter pack
-		*  
-		*  for (auto& [id, a, b] : ecs.ViewEach<A, B>()) {
-		*    ...
-		*  }
-		*/
-		template <typename ...Components>
-		std::vector<std::tuple<EntityID, Components&...>> View() {
-			std::vector<std::tuple<EntityID, Components&...>> result;
-			ComponentMask targetMask = GetMask<Components...>();
-
-			for (auto& [mask, ids] : m_groupings) {
-				if ((mask & targetMask) == targetMask) {
-					for (EntityID id : ids.Data()) {
-						result.emplace_back(id, Get<Components>(id)...);
-					}
-				}
-			}
-
-			return result;
-		}
-		 
-		/*
-		*  Executes a passed lambda on all the entities that match the
-		*  passed parameter pack.
-		*  
-		*  Provided function should follow one of two forms:
-		*  [](Component& c1, Component& c2);
-		*  OR 
-		*  [](EntityID id, Component& c1, Component& c2);
-		*/
-		template <typename ...Components, typename Func>
-		void ForEach(Func&& func) {
-			std::vector<std::tuple<EntityID, Components&...>> result;
-			ComponentMask targetMask = GetMask<Components...>();
-
-			std::vector<SparseSet<EntityID>> groups; 
-
-			for (auto& [mask, ids] : m_groupings) {
-				// collect group if mask is a subset of targetMask 
-				if ((mask & targetMask) == targetMask) {
-					groups.push_back(ids);
-				}
-			}
-
-			for (auto itr = groups.rbegin(); itr != groups.rend(); itr++) {
-				std::vector<EntityID> data = itr->Data();
-
-				for (int i = data.size() - 1; i >= 0; i--) {
-					EntityID id = data[i];
-					
-					// This branch is for [](EntityID id, Component& c1, Component& c2);
-					// constexpr denotes this is evaluated at compile time, which allows
-					// the calling of func with different parameters.
-					if constexpr (std::is_invocable_v<Func, EntityID, Components&...>) {
-						func(id, Get<Components>(id)...);
-					}
-
-					// This branch is for [](Component& c1, Component& c2);
-					else if constexpr (std::is_invocable_v<Func, Components&...>) {
-						func(Get<Components>(id)...);
-					}
-
-					else {
-						SEECS_ASSERT(false,
-							"Bad lambda provided to .ForEach(), parameter pack does not match lambda args");
-					}
-				}
-			}
+		template <typename... Components>
+		SimpleView<Components...> View() {
+			// Pass copy of array from fold expression into view.
+			return { { GetComponentPoolPtr<Components>()... } };
 		}
 
 		size_t GetEntityCount() {
