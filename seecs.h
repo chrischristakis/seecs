@@ -12,6 +12,7 @@
 #include <bitset>
 #include <memory>
 #include <type_traits>
+#include <typeindex>
 #include <functional>
 
 // Can replace these defines with custom macros elsewhere
@@ -28,6 +29,9 @@
 	#else
 		#define SEECS_INFO(msg);
 	#endif
+#endif
+#ifndef SEECS_MSG
+	#define SEECS_MSG(msg) std::cout << "[SEECS]: " << msg << "\n";
 #endif
 
 namespace seecs {
@@ -73,6 +77,8 @@ namespace seecs {
 
 		static constexpr std::size_t size = sizeof...(Types);
 	};
+
+
 
 	/*
 	*  A templated sparse set implementation, mapping EntityID -> T
@@ -228,6 +234,8 @@ namespace seecs {
 
 	};
 
+
+
 	/*
 	*  A SimpleView is a basic implementation of a view, allowing iteration based
 	*  on the passed in Component parameter pack.
@@ -326,6 +334,7 @@ namespace seecs {
 	};
 
 
+
 	class ECS {
 	private:
 
@@ -334,7 +343,11 @@ namespace seecs {
 		using ComponentMask = std::bitset<MAX_COMPONENTS>;
 
 
-		using TypeName = const char*;
+		using TypeIndex = std::type_index;
+
+
+		// Type alias for how we store indices
+		using ind_t = size_t;
 
 
 		// List of IDs already created, but no longer in use
@@ -343,12 +356,6 @@ namespace seecs {
 
 		// Holds the component mask for an entity
 		SparseSet<ComponentMask> m_entityMasks;
-
-
-		// Groups entities that share a component mask.
-		// A, B, C: [1, 2, 3]
-		// B: [4]
-		std::unordered_map<ComponentMask, SparseSet<EntityID>> m_groupings;
 
 
 		// Associates ID with name provided in CreateEntity(), mainly for debugging
@@ -363,14 +370,14 @@ namespace seecs {
 
 
 		// Key is component name, value is the bit position in ComponentMask
-		std::unordered_map<TypeName, size_t> m_componentBitPosition;
+		std::unordered_map<TypeIndex, ind_t> m_componentBitPosition;
 
 
 		// Highest recorded entity ID
 		EntityID m_maxEntityID = 0;
 
 
-		static constexpr size_t tombstone = std::numeric_limits<size_t>::max();
+		static constexpr size_t tombstone = std::numeric_limits<ind_t>::max();
 
 		template <typename... Components>
 		friend class SimpleView;
@@ -389,8 +396,8 @@ namespace seecs {
 
 		template <typename T>
 		size_t GetComponentBitPosition() {
-			TypeName name = typeid(T).name();
-			auto it = m_componentBitPosition.find(name);
+			TypeIndex type = std::type_index(typeid(T));
+			auto it = m_componentBitPosition.find(type);
 			if (it == m_componentBitPosition.end())
 				return tombstone;
 
@@ -439,6 +446,18 @@ namespace seecs {
 			mask[bitPos] = val;
 		}
 
+		// Create a component bit for the given type
+		template <typename T>
+		void AddComponentBit() {
+			TypeIndex type = std::type_index(typeid(T));
+
+			SEECS_ASSERT(m_componentBitPosition.find(type) == m_componentBitPosition.end(),
+				"Component with name '" << typeid(T).name() << "' already registered");
+
+			m_componentBitPosition.emplace(type, m_componentPools.size());
+			SEECS_ASSERT(m_componentPools.size() != tombstone, "Component bit position equal to tombstone");
+		}
+
 		template <typename Component>
 		ComponentMask::reference GetComponentBit(ComponentMask& mask) {
 			size_t bitPos = GetComponentBitPosition<Component>();
@@ -460,42 +479,22 @@ namespace seecs {
 		template <typename... Components>
 		ComponentMask GetMask() {
 			ComponentMask mask;
-			(SetComponentBit<Components>(mask, 1), ...); // fold expression
+			(SetComponentBit<Components>(mask, 1), ...);
 			return mask;
-		}
-
-		// Removes an entity from it's group with its current mask
-		void RemoveFromGroup(ComponentMask& mask, EntityID id) {
-			if (mask.none()) return;
-
-			SparseSet<EntityID>& group = GetGroupedEntities(mask);
-			group.Delete(id);
-
-			// Delete grouping if it's empty
-			if (group.IsEmpty())
-				m_groupings.erase(mask);
-		}
-
-		void AssignToGroup(ComponentMask& mask, EntityID id) {
-			// If mask is empty, no group
-			if (mask.none()) return;
-
-			// Create group if it doesn't exist
-			m_groupings.emplace(std::piecewise_construct,
-				std::forward_as_tuple(mask),
-				std::forward_as_tuple()); // Empty sparse set
-			m_groupings[mask].Set(id, id);
-		}
-
-		SparseSet<EntityID>& GetGroupedEntities(ComponentMask& mask) {
-			auto found = m_groupings.find(mask);
-			SEECS_ASSERT(found != m_groupings.end(), "Cannot find group for entities with mask " << mask);
-			return found->second;
 		}
 
 	public:
 
 		ECS() = default;
+
+		void Reset() {
+			m_availableEntities.clear();
+			m_entityMasks.Clear();
+			m_entityNames.clear();
+			m_componentPools.clear();
+			m_componentBitPosition.clear();
+			m_maxEntityID = 0;
+		}
 
 		/*
 		*  Creates an entity and returns the ID to refer to that entity.
@@ -508,6 +507,7 @@ namespace seecs {
 		EntityID CreateEntity(std::string_view name = "") {
 			EntityID id = tombstone;
 
+			// Either spawn a new ID or recycle one
 			if (m_availableEntities.size() == 0) {
 				SEECS_ASSERT(m_maxEntityID < MAX_ENTITIES, "Entity limit exceeded");
 				id = m_maxEntityID++;
@@ -555,14 +555,10 @@ namespace seecs {
 			std::string name = GetEntityName(id);
 			ComponentMask& mask = GetEntityMask(id);
 
-			// Remove from group
-			RemoveFromGroup(mask, id);
-
 			// Destroy component associations
 			for (int i = 0; i < MAX_COMPONENTS; i++)
-				if (mask[i] == 1) {
+				if (mask[i] == 1)
 					m_componentPools[i]->Delete(id);
-				}
 
 			m_entityMasks.Delete(id);
 			m_entityNames.erase(id);
@@ -577,16 +573,14 @@ namespace seecs {
 		*/
 		template <typename T>
 		void RegisterComponent() {
-			TypeName name = typeid(T).name();
-			SEECS_ASSERT(m_componentBitPosition.find(name) == m_componentBitPosition.end(),
-				"Component with name '" << name << "' already registered");
 			SEECS_ASSERT(m_componentPools.size() < MAX_COMPONENTS,
 				"Exceeded max number of registered components");
 
-			m_componentBitPosition.emplace(name, m_componentPools.size());
+			AddComponentBit<T>();
+
 			m_componentPools.push_back(std::make_unique<SparseSet<T>>());
 
-			SEECS_INFO("Registered component '" << name << "'");
+			SEECS_INFO("Registered component '" << typeid(T).name() << "'");
 		}
 
 		/*
@@ -607,13 +601,7 @@ namespace seecs {
 
 			ComponentMask& mask = GetEntityMask(id);
 
-			// Remove from old group
-			RemoveFromGroup(mask, id);
-
 			SetComponentBit<T>(mask, 1);
-
-			// Add ID to new group
-			AssignToGroup(mask, id);
 
 			SEECS_INFO("Attached '" << typeid(T).name() << "' to " << ENTITY_INFO(id));
 			return *pool.Set(id, std::move(component));
@@ -650,14 +638,7 @@ namespace seecs {
 			if (!pool.Get(id)) return;
 
 			ComponentMask& mask = GetEntityMask(id);
-
-			// Remove from old group
-			RemoveFromGroup(mask, id);
-
 			SetComponentBit<T>(mask, 0);
-
-			// Shift to new group with new mask
-			AssignToGroup(mask, id);
 
 			pool.Delete(id);
 			SEECS_INFO("Removed '" << typeid(T).name() << "' from " << ENTITY_INFO(id));
@@ -665,8 +646,6 @@ namespace seecs {
 
 		template <typename... Ts>
 		bool HasAll(EntityID id) {
-			// Fold operator, reads as 
-			// (HasComponent<Transform> && HasComponent<Physics> && HasComponent<Sprite> && ...)
 			return (Has<Ts>(id) && ...);
 		}
 
@@ -676,60 +655,18 @@ namespace seecs {
 		}
 
 		/*
-		* Gets all the entity IDs matching the component parameter pack
-		*
-		* for (EntityID id : ecs.View<Transform, Sprite>()) {
-		*   ...
-		* }
+		*   Create a SimpleView instance which you can iterate via .ForEach()
+		* 
+		*   - auto view = ecs.View<A, B>();
 		*/
-		template <typename ...Components>
-		std::vector<EntityID> ViewIDs() {
-			std::vector<EntityID> result;
-			ComponentMask targetMask = GetMask<Components...>();
-
-			for (auto& [mask, ids] : m_groupings) {
-				// As long as a grouping contains all of the components of the target mask, return the IDs
-				if ((mask & targetMask) == targetMask)
-					result.insert(result.end(), ids.Data().begin(), ids.Data().end());
-			}
-
-			return result;
-		}
-
 		template <typename... Components>
 		SimpleView<Components...> View() {
-			// Pass copy of array from fold expression into view.
+			// Pass a copy of array from fold expression into view.
 			return { { GetComponentPoolPtr<Components>()... } };
 		}
 
 		size_t GetEntityCount() {
 			return m_entityMasks.Size();
-		}
-
-		void PrintGroupings() {
-			std::stringstream ss;
-			for (auto& [mask, sparse] : m_groupings) {
-				// Create string for grouping
-				bool findingFirstBit = true;
-				std::stringstream maskSS;
-				for (int i = MAX_COMPONENTS - 1; i >= 0; i--) {
-					if (mask[i] == 0 && findingFirstBit) 
-						continue;
-					findingFirstBit = false;
-					maskSS << mask[i];
-				}
-				ss << "\n" << maskSS.str() << ": ";
-
-				std::stringstream idSS;
-
-				std::string delim = "";
-				for (EntityID id : sparse.Data()) {
-					idSS << delim << id;
-					if (delim.empty()) delim = ", ";
-				}
-				ss << "[" << idSS.str() << "]";
-			}
-			SEECS_INFO(ss.str());
 		}
 
 		void PrintEntityMask(EntityID id) {
@@ -748,24 +685,11 @@ namespace seecs {
 			SEECS_INFO(ss.str());
 		}
 
-		void PrintActive() {
-			std::stringstream ss;
-			std::string delim = "";
-
-			for (auto& [_, ids] : m_groupings) {
-				for (EntityID id : ids.Data()) {
-					ss << delim << id;
-					if (delim.empty()) delim = ", ";
-				}
-			}
-			SEECS_INFO("\Active entities:\n" << ss.str());
-		}
-
 		void PrintEntityComponents(EntityID id) {
 			SEECS_ASSERT_VALID_ENTITY(id);
 			SEECS_ASSERT_ALIVE_ENTITY(id);
 
-			ComponentMask& mask = GetEntityMask(id);
+			/*ComponentMask& mask = GetEntityMask(id);
 
 			std::stringstream ss;
 			std::string delim = "";
@@ -774,7 +698,7 @@ namespace seecs {
 					ss << delim << " - " << name;
 				if (delim.empty()) delim = "\n";
 			}
-			SEECS_INFO("\n" << ENTITY_INFO(id) << " components:\n" << ss.str());
+			SEECS_INFO("\n" << ENTITY_INFO(id) << " components:\n" << ss.str());*/
 		}
 
 	};
