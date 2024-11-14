@@ -39,7 +39,9 @@ namespace seecs {
 	// In ECS, entities are simply just indices which group data
 	using EntityID = uint64_t;
 
+
 	static constexpr EntityID NULL_ENTITY = std::numeric_limits<EntityID>::max();
+
 
 	// Max amount of entities alive at once.
 	// Set this to NULL_ENTITY if you want no limit.
@@ -47,9 +49,11 @@ namespace seecs {
 	// the program will terminate.
 	constexpr size_t MAX_ENTITIES = NULL_ENTITY;
 
+
 	// Should be a multiple of 32 (4 bytes), since
 	// bitset overallocates by 4 bytes each time.
 	constexpr size_t MAX_COMPONENTS = 64;
+
 
 	// Base class allows runtime polymorphism
 	class ISparseSet {
@@ -61,6 +65,7 @@ namespace seecs {
 		virtual bool ContainsEntity(EntityID id) = 0;
 		virtual std::vector<EntityID> GetEntityList() = 0;
 	};
+
 
 	/*
 	* Basic type container, can use each type by providing compile-time index:
@@ -306,6 +311,7 @@ namespace seecs {
 			auto inds = std::make_index_sequence<sizeof...(Components)>{};
 
 			// Iterate smallest component pool and compare against other pools in view
+			// Note this list is a COPY, allowing safe deletion during iteration.
 			for (EntityID id : m_smallest->GetEntityList()) {
 				if (AllContain(id)) {
 
@@ -328,6 +334,15 @@ namespace seecs {
 					}
 				}
 			}
+		}
+
+		std::vector<EntityID> GetEntities() {
+			std::vector<EntityID> result;
+
+			for (EntityID id : m_smallest->GetEntityList())
+				if (AllContain(id))
+					result.push_back(id);
+			return result;
 		}
 
 
@@ -372,7 +387,6 @@ namespace seecs {
 		// Key is component name, value is the bit position in ComponentMask
 		std::unordered_map<TypeIndex, ind_t> m_componentBitPosition;
 
-
 		// Highest recorded entity ID
 		EntityID m_maxEntityID = 0;
 
@@ -405,19 +419,15 @@ namespace seecs {
 		}
 
 		/*
-		* Retrieves an uncasted pointer to a pool of type T
+		*   Retrieves an uncasted pointer to a pool of type T
 		*/
 		template <typename T>
-		ISparseSet* GetComponentPoolPtr(bool registerIfNotFound = false) {
+		ISparseSet* GetComponentPoolPtr() {
 			size_t bitPos = GetComponentBitPosition<T>();
 
 			if (bitPos == tombstone) {
-				if (registerIfNotFound) {
-					RegisterComponent<T>();
-					bitPos = GetComponentBitPosition<T>();
-				}
-				SEECS_ASSERT(registerIfNotFound,
-					"Attempting to operate on unregistered component '" << typeid(T).name() << "'");
+				RegisterComponent<T>();
+				bitPos = GetComponentBitPosition<T>();
 			}
 
 			SEECS_ASSERT(bitPos < m_componentPools.size() && bitPos >= 0,
@@ -430,8 +440,8 @@ namespace seecs {
 		* Retrieves reference for the specific component pool given a component name
 		*/
 		template <typename T>
-		SparseSet<T>& GetComponentPool(bool registerIfNotFound = false) {
-			ISparseSet* genericPtr = GetComponentPoolPtr<T>(registerIfNotFound);
+		SparseSet<T>& GetComponentPool() {
+			ISparseSet* genericPtr = GetComponentPoolPtr<T>();
 			SparseSet<T>* pool = static_cast<SparseSet<T>*>(genericPtr);
 
 			return *pool;
@@ -454,7 +464,7 @@ namespace seecs {
 			SEECS_ASSERT(m_componentBitPosition.find(type) == m_componentBitPosition.end(),
 				"Component with name '" << typeid(T).name() << "' already registered");
 
-			m_componentBitPosition.emplace(type, m_componentPools.size());
+			m_componentBitPosition[type] = m_componentPools.size();
 			SEECS_ASSERT(m_componentPools.size() != tombstone, "Component bit position equal to tombstone");
 		}
 
@@ -593,7 +603,7 @@ namespace seecs {
 			SEECS_ASSERT_VALID_ENTITY(id);
 			SEECS_ASSERT_ALIVE_ENTITY(id);
 
-			SparseSet<T>& pool = GetComponentPool<T>(true);
+			SparseSet<T>& pool = GetComponentPool<T>();
 
 			// If component already exists, overwrite
 			if (pool.Get(id))
@@ -669,36 +679,8 @@ namespace seecs {
 			return m_entityMasks.Size();
 		}
 
-		void PrintEntityMask(EntityID id) {
-			SEECS_ASSERT_VALID_ENTITY(id);
-			std::stringstream ss;
-
-			ComponentMask& mask = *m_entityMasks.Get(id);
-			
-			bool findingFirstBit = true;
-			for (int i = MAX_COMPONENTS - 1; i >= 0; i--) {
-				if (mask[i] == 0 && findingFirstBit)
-					continue;
-				findingFirstBit = false;
-				ss << mask[i];
-			}
-			SEECS_INFO(ss.str());
-		}
-
-		void PrintEntityComponents(EntityID id) {
-			SEECS_ASSERT_VALID_ENTITY(id);
-			SEECS_ASSERT_ALIVE_ENTITY(id);
-
-			/*ComponentMask& mask = GetEntityMask(id);
-
-			std::stringstream ss;
-			std::string delim = "";
-			for (auto& [name, pos] : m_componentBitPosition) {
-				if (mask[pos])
-					ss << delim << " - " << name;
-				if (delim.empty()) delim = "\n";
-			}
-			SEECS_INFO("\n" << ENTITY_INFO(id) << " components:\n" << ss.str());*/
+		size_t GetPoolCount() {
+			return m_componentPools.size();
 		}
 
 	};

@@ -1,6 +1,6 @@
 # seecs
 
-seecs (pronounced see-ks) is a small header only ECS sparse set implementation for C++. Seecs stands for **Simple-Enough-Entity-Component-System**, which defines the primary goal:
+seecs (pronounced see-ks) is a small header only RTTI ECS sparse set implementation for C++. Seecs stands for **Simple-Enough-Entity-Component-System**, which defines the primary goal:
 
 To implement the core of a functional ECS using sparse sets as a resource for learning, while still keeping it efficient.
 
@@ -8,58 +8,56 @@ It's my take on a 'pure' ECS, in which entities are just IDs, components are dat
 
 Here's an example of seecs in action:
 ```cpp
-#define SEECS_INFO_ENABLED  // Enables info messages during runtime
+#define SEECS_INFO_ENABLED
 #include "seecs.h"
 
+// Components hold data
 struct A {
-  int x = 0;
+	int x = 0;
 };
 
 struct B {
-  int y = 0;
+	int y = 0;
 };
 
 struct C {
-  int z = 0;
+	int z = 0;
 };
 
 int main() {
-  // Base ECS instance, acts as a coordinator
-  seecs::ECS ecs;
-  
-  ecs.RegisterComponent<A>();
-  ecs.RegisterComponent<B>();
-  ecs.RegisterComponent<C>();
-  
-  seecs::EntityID e1 = ecs.CreateEntity();
-  seecs::EntityID e2 = ecs.CreateEntity("e2"); // Can name entities, will reflect in debug messages
-  seecs::EntityID e3 = ecs.CreateEntity();
-  
-  ecs.Add<A>(e1, {5});  // initialize component A with x = 5
-  ecs.Add<B>(e1); // default constructor called
-  ecs.Add<C>(e1);
-  
-  ecs.Add<A>(e2);
-  
-  ecs.Add<A>(e3);
-  ecs.Add<C>(e3);
 
-  // This will run on all entities with components A and C
-  ecs.ForEach<A, C>([&ecs](seecs::EntityID id, A& a, C& c) {
-    // ...
-  });
-  
-  // OR
-  
-  ecs.ForEach<A, C>([](A& a, C& c) {
-    // ...
-  });
-  
-  // OR
-  
-  for (auto& [id, a, c] : ecs.View<A, C>()) {
-    // ...
-  }
+	// Base ECS instance, acts as a coordinator
+	seecs::ECS ecs;
+
+	seecs::EntityID e1 = ecs.CreateEntity();
+	seecs::EntityID e2 = ecs.CreateEntity("e2"); // Custom name for debugging
+	seecs::EntityID e3 = ecs.CreateEntity();
+	seecs::EntityID e4 = ecs.CreateEntity();
+	seecs::EntityID e5 = ecs.CreateEntity();
+
+	ecs.Add<A>(e1, {5});  // Initialize component A(5)
+	ecs.Add<B>(e1); // Default constructor called
+	ecs.Add<C>(e1);
+
+	ecs.Add<A>(e2);
+
+	ecs.Add<A>(e3);
+	ecs.Add<C>(e3);
+
+	ecs.Add<B>(e4);
+
+	ecs.Add<A>(e5);
+	ecs.Add<C>(e5);
+
+	ecs.View<A, B>().ForEach([&](seecs::EntityID id, A& a, B& b) {
+		// ...
+	});
+
+	auto ids = ecs.View<A, B>().GetEntities();
+	for (size_t i = 0; i < ids.size(); i++) {
+		// Useful for nested calls, can slice entity list for optimizations.
+	}
+
 }
 ```
 
@@ -72,7 +70,7 @@ If you want to know how I add systems in seecs, I simply just do something like 
 namespace MovementSystem {
 
   void Move(ECS& ecs) {
-    ecs.ForEach<Transform, Physics>([](Transform& transform, Physics& physics) {
+    ecs.View<Transform, Physics>().ForEach([](Transform& transform, Physics& physics) {
       transform.position += physics.velocity;
     });
   }
@@ -84,20 +82,21 @@ And that's it. It's on you to manage these systems however you want. You can mak
 
 ## Deleting entities
 
-seecs makes deleting entities easy (Thanks @nassorc!) and can de done directly while iterating:
+seecs makes deleting entities easy and can de done directly while iterating:
 
 ```cpp
-ecs.ForEach<HealthComponent>([&ecs, &marked](EntityID id, HealthComponent& hc) {
+ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
     ecs.DeleteEntity(id);
 });
 ```
 
 You can also safely add/remove components while iterating without encountering undefined behaviour:
 ```cpp
-ecs.ForEach<HealthComponent>([&ecs, &marked](EntityID id, HealthComponent& hc) {
+ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
     ecs.Remove<HealthComponent>(id);
     ecs.Add<NewComponent>(id);
 });
+
 ```
 
 ### Things I'll get around to:
