@@ -121,7 +121,8 @@ view.ForEach([&ecs](EntityID id, HealthComponent& hc) {
 
 You can access an entity in one of two ways currenty,
 
-1) Via views
+1) **Via views**
+
 This is probably the most common way you'll access entities; by specifying a group of components and seecs will return all the entity IDs that match said group, like this:
 ```cpp
 auto view = ecs.View<A, B>();
@@ -133,7 +134,8 @@ This means when there's little overlap between entities that share components, t
 But in practise, I haven't run into this situation much; so I usually stick with views.
 
 
-2) Via id lists
+2) **Via ID lists**
+   
 If we know what components an entity will have beforehand, we can utilize the `Get` method and just extract all the components that we need:
 ```cpp
 vector<EntityID> enemies;
