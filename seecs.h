@@ -16,7 +16,7 @@
 #include <functional>
 
 // Can replace these defines with custom macros elsewhere
-#ifndef SEECS_ASSERTS
+#ifndef SEECS_ASSERT
 	#define SEECS_ASSERT(condition, msg) \
 		if (!(condition)) { \
 			std::cerr << "[SEECS error]: " << msg << std::endl; \
@@ -149,7 +149,7 @@ namespace seecs {
 
 		SparseSet() {
 			// Avoids initial copies/allocation, feel free to alter size
-			m_dense.reserve(100);
+			m_dense.reserve(1000);
 		}
 
 		T* Set(EntityID id, T obj) {

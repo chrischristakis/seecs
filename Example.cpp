@@ -1,4 +1,4 @@
-#define SEECS_INFO_ENABLED
+//#define SEECS_INFO_ENABLED
 #include "seecs.h"
 #include "benchmark.h"
 
@@ -16,7 +16,6 @@ struct C {
 };
 
 int main() {
-
 	// Base ECS instance, acts as a coordinator
 	seecs::ECS ecs;
 
@@ -48,5 +47,4 @@ int main() {
 	for (size_t i = 0; i < ids.size(); i++) {
 		// Useful for nested calls, can slice entity list for optimizations.
 	}
-
 }
