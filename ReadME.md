@@ -49,17 +49,35 @@ int main() {
 	ecs.Add<A>(e5);
 	ecs.Add<C>(e5);
 
-	ecs.View<A, B>().ForEach([&](seecs::EntityID id, A& a, B& b) {
+	auto view = ecs.View<A, B>();
+	view.ForEach([&](seecs::EntityID id, A& a, B& b) {
 		// ...
 	});
 
-	auto ids = ecs.View<A, B>().GetEntities();
+	auto ids = view.GetEntities();
 	for (size_t i = 0; i < ids.size(); i++) {
 		// Useful for nested calls, can slice entity list for optimizations.
 	}
 
 }
 ```
+
+### Benchmarks
+
+Specs: AMD Ryzen 5 5600x (6 cores, 3.7 GHz), Compiled via Visual Studio 2022 on a windows machine.
+
+
+| Entities                 | 100      | 10,000 | 1,000,000 |
+| --------                 | ---      | ------ | --------- |
+| `CreateEntity`           | 0.0010ms | 0.34ms | 18.7ms    |
+| `Add<T>`                 | 0.0024ms | 0.56ms | 56.3ms    |
+| `Get<T>`                 | 0.0004ms | 0.22ms | 22.5ms    |
+| `Remove<T>`              | 0.0006ms | 0.45ms | 45.7ms    |
+| `DeleteEntity`           | 0.0011ms | 0.79ms | 95.9ms    |
+| `ForEach (2 components)` | 0.0001ms | 0.10ms | 12.9ms    |
+| `ForEach (4 components)` | 0.0002ms | 0.17ms | 21.3ms    |
+
+- Note: These are IDEAL CONDITIONS in which the sparse set is densley populated and packed. Mileage may vary on use case.
 
 ## Systems
 
@@ -85,19 +103,51 @@ And that's it. It's on you to manage these systems however you want. You can mak
 seecs makes deleting entities easy and can de done directly while iterating:
 
 ```cpp
-ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
+view.ForEach([&ecs](EntityID id, HealthComponent& hc) {
     ecs.DeleteEntity(id);
 });
 ```
 
 You can also safely add/remove components while iterating without encountering undefined behaviour:
 ```cpp
-ecs.ForEach<HealthComponent>([&ecs](EntityID id, HealthComponent& hc) {
+view.ForEach([&ecs](EntityID id, HealthComponent& hc) {
     ecs.Remove<HealthComponent>(id);
     ecs.Add<NewComponent>(id);
 });
 
 ```
+
+### How to access entities
+
+You can access an entity in one of two ways currenty,
+
+1) Via views
+This is probably the most common way you'll access entities; by specifying a group of components and seecs will return all the entity IDs that match said group, like this:
+```cpp
+auto view = ecs.View<A, B>();
+
+view.ForEach([](A& a, B& b) { //... });
+```
+Behind the scenes, a view takes the smallest of it's component pools and iterates all of the entities in it, checking if it has the other components.
+This means when there's little overlap between entities that share components, there will be wasted iterations.
+But in practise, I haven't run into this situation much; so I usually stick with views.
+
+
+2) Via id lists
+If we know what components an entity will have beforehand, we can utilize the `Get` method and just extract all the components that we need:
+```cpp
+vector<EntityID> enemies;
+
+void Update() {
+   for (EntityID id : enemies) {
+	Transform& transform = ecs.Get<Transform>(id);
+	Health& health = ecs.Get<Health>(id);
+   }
+}
+```
+This is more rigid, and some call it an anti-pattern in an ECS, but it definitely has its merits and could potentially be more performant than views, since you won't waste any iterations.
+
+There's merit (and obstacles) for each, but I'd recommend sticking to views until you see a need for ID lists. Or use both!
 
 ### Things I'll get around to:
 
