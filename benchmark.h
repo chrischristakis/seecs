@@ -45,7 +45,6 @@ inline void RunBenchmark(const std::size_t I) {
 
 	SEECS_MSG("Running 'creation' benchmark [" << I << "] entities");
 	t.Reset();
-	float total = 0.0f;
 	for (size_t i = 0; i < I; i++)
 		ids[i] = ecs.CreateEntity();
 	float elapsed = t.Elapsed();

@@ -1,4 +1,4 @@
-//#define SEECS_INFO_ENABLED
+#define SEECS_INFO_ENABLED
 #include "seecs.h"
 #include "benchmark.h"
 
