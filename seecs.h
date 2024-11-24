@@ -635,6 +635,19 @@ namespace seecs {
 		}
 
 		/*
+		*  Retrieves a pointer to the specified component for the given entity
+		*
+		* - ecs.GetPtr<Transform>(player);
+		*/
+		template <typename T>
+		T* GetPtr(EntityID id) {
+			SEECS_ASSERT_VALID_ENTITY(id);
+
+			SparseSet<T>& pool = GetComponentPool<T>();
+			return pool.Get(id);
+		}
+
+		/*
 		*  Removes a component from an entity
 		*
 		* - ecs.Remove<Transform>(player);
