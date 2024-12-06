@@ -672,6 +672,11 @@ namespace seecs {
 			return (Has<Ts>(id) && ...);
 		}
 
+		template <typename... Ts>
+		bool HasAny(EntityID id) {
+			return (Has<Ts>(id) || ...);
+		}
+
 		template <typename T>
 		bool Has(EntityID id) {
 			return GetComponentBit<T>(GetEntityMask(id));
