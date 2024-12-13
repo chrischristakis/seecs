@@ -39,12 +39,14 @@ int main() {
 	ecs.Add<A>(e5);
 	ecs.Add<C>(e5);
 
-	ecs.View<A, B>().ForEach([&](seecs::EntityID id, A& a, B& b) {
+	auto view = ecs.View<A, B>();
+	
+	view.ForEach([&](seecs::EntityID id, A& a, B& b) {
 		// ...
 	});
 
-	auto ids = ecs.View<A, B>().GetEntities();
-	for (size_t i = 0; i < ids.size(); i++) {
-		// Useful for nested calls, can slice entity list for optimizations.
+	auto packed = view.GetPacked();
+	for (auto [id, components] : packed) {
+		auto [a, b] = components;
 	}
 }

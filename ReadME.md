@@ -54,9 +54,9 @@ int main() {
 		// ...
 	});
 
-	auto ids = view.GetEntities();
-	for (size_t i = 0; i < ids.size(); i++) {
-		// Useful for nested calls, can slice entity list for optimizations.
+	auto packed = view.GetPacked();
+	for (auto [id, components]: packed) {
+		auto [a, b] = components;
 	}
 
 }

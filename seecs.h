@@ -336,12 +336,31 @@ namespace seecs {
 			}
 		}
 
-		std::vector<EntityID> GetEntities() {
-			std::vector<EntityID> result;
+		/*
+		*	Holds an entity id and a tuple of references to the components returned by the view.
+		*	Access components that are part of a pack like such:
+		*	- auto [componentA, componentB] = pack.components;
+		*/
+		struct Pack {
+			EntityID id;
+			std::tuple<Components&...> components;
+		};
+
+		/*
+		*  Useful when you want a way to iterate a view via indices.
+		*  e.g:
+			auto packed = ecs.View<A, B>().GetPacked();
+			for (size_t i = 0; i < packed.size(); i++) {
+				auto [a1, b1] = packed[i].components;
+			}
+		*/
+		std::vector<Pack> GetPacked() {
+			auto inds = std::make_index_sequence<sizeof...(Components)>{};
+			std::vector<Pack> result;
 
 			for (EntityID id : m_smallest->GetEntityList())
 				if (AllContain(id))
-					result.push_back(id);
+					result.push_back({ id, MakeComponentTuple(id, inds) });
 			return result;
 		}
 
