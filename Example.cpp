@@ -45,8 +45,17 @@ int main() {
 		// ...
 	});
 
+	// OR
+
+	view.ForEach([&](A& a, B& b) {
+		// ...
+	});
+
+	// OR
+
 	auto packed = view.GetPacked();
 	for (auto [id, components] : packed) {
 		auto [a, b] = components;
+		// ...
 	}
 }

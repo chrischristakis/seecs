@@ -47,12 +47,12 @@ namespace seecs {
 	// Set this to NULL_ENTITY if you want no limit.
 	// Once limit is hit, an assert will fire and
 	// the program will terminate.
-	constexpr size_t MAX_ENTITIES = NULL_ENTITY;
+	constexpr std::size_t MAX_ENTITIES = NULL_ENTITY;
 
 
 	// Should be a multiple of 32 (4 bytes), since
 	// bitset overallocates by 4 bytes each time.
-	constexpr size_t MAX_COMPONENTS = 64;
+	constexpr std::size_t MAX_COMPONENTS = 64;
 
 
 	// Base class allows runtime polymorphism
@@ -61,7 +61,7 @@ namespace seecs {
 		virtual ~ISparseSet() = default;
 		virtual void Delete(EntityID) = 0;
 		virtual void Clear() = 0;
-		virtual size_t Size() = 0;
+		virtual std::size_t Size() = 0;
 		virtual bool ContainsEntity(EntityID id) = 0;
 		virtual std::vector<EntityID> GetEntityList() = 0;
 	};
@@ -96,16 +96,16 @@ namespace seecs {
 	class SparseSet: public ISparseSet {
 	private:
 
-		using Sparse = std::vector<size_t>;
+		using Sparse = std::vector<std::size_t>;
 
 		std::vector<Sparse> m_sparsePages;
 
 		std::vector<T> m_dense;
 		std::vector<EntityID> m_denseToEntity; // 1:1 vector where dense index == Entity Index
 
-		const size_t SPARSE_MAX_SIZE = 1000;
+		const std::size_t SPARSE_MAX_SIZE = 1000;
 
-		static constexpr size_t tombstone = std::numeric_limits<size_t>::max();
+		static constexpr std::size_t tombstone = std::numeric_limits<std::size_t>::max();
 
 		/*
 		* Inserts a given dense index into the sparse vector, associating
@@ -114,9 +114,9 @@ namespace seecs {
 		* This doesnt actually insert anything into the dense
 		* vector, it simply defines a mapping from ID -> index
 		*/
-		void SetDenseIndex(EntityID id, size_t index) {
-			size_t page = id / SPARSE_MAX_SIZE;
-			size_t sparseIndex = id % SPARSE_MAX_SIZE; // Index local to a page
+		void SetDenseIndex(EntityID id, std::size_t index) {
+			std::size_t page = id / SPARSE_MAX_SIZE;
+			std::size_t sparseIndex = id % SPARSE_MAX_SIZE; // Index local to a page
 
 			if (page >= m_sparsePages.size())
 				m_sparsePages.resize(page + 1);
@@ -132,9 +132,9 @@ namespace seecs {
 		* Returns the dense index for a given entity ID,
 		* or a tombstone (null) value if non-existent
 		*/
-		size_t GetDenseIndex(EntityID id) {
-			size_t page = id / SPARSE_MAX_SIZE;
-			size_t sparseIndex = id % SPARSE_MAX_SIZE;
+		std::size_t GetDenseIndex(EntityID id) {
+			std::size_t page = id / SPARSE_MAX_SIZE;
+			std::size_t sparseIndex = id % SPARSE_MAX_SIZE;
 
 			if (page < m_sparsePages.size()) {
 				Sparse& sparse = m_sparsePages[page];
@@ -154,7 +154,7 @@ namespace seecs {
 
 		T* Set(EntityID id, T obj) {
 			// Overwrite existing elements
-			size_t index = GetDenseIndex(id);
+			std::size_t index = GetDenseIndex(id);
 			if (index != tombstone) {
 				m_dense[index] = obj;
 				m_denseToEntity[index] = id;
@@ -172,12 +172,12 @@ namespace seecs {
 		}
 
 		T* Get(EntityID id) {
-			size_t index = GetDenseIndex(id);
+			std::size_t index = GetDenseIndex(id);
 			return (index != tombstone) ? &m_dense[index] : nullptr;
 		}
 
 		T& GetRef(EntityID id) {
-			size_t index = GetDenseIndex(id);
+			std::size_t index = GetDenseIndex(id);
 			if (index == tombstone)
 				SEECS_ASSERT(false, "GetRef called on invalid entity with ID " << id);
 			return m_dense[index];
@@ -185,7 +185,7 @@ namespace seecs {
 
 		void Delete(EntityID id) override {
 
-			size_t deletedIndex = GetDenseIndex(id);
+			std::size_t deletedIndex = GetDenseIndex(id);
 
 			if (m_dense.empty() || deletedIndex == tombstone) return;
 
@@ -199,7 +199,7 @@ namespace seecs {
 			m_denseToEntity.pop_back();
 		}
 
-		size_t Size() override {
+		std::size_t Size() override {
 			return m_dense.size();
 		}
 
@@ -281,33 +281,15 @@ namespace seecs {
 			return std::make_tuple((std::ref(GetPoolAt<Indices>()->GetRef(id)))...);
 		}
 
-	public:
-
-		SimpleView(std::array<ISparseSet*, sizeof...(Components)> pools) :
-			m_viewPools{ pools }
-		{
-			SEECS_ASSERT(componentTypes::size == m_viewPools.size(), "Component type list and pool array size mismatch");
-
-			auto smallestPool = std::min_element(m_viewPools.begin(), m_viewPools.end(),
-				[](ISparseSet* a, ISparseSet* b) { return a->Size() < b->Size(); }
-			);
-
-			SEECS_ASSERT(smallestPool != m_viewPools.end(), "Initializing invalid/empty view");
-
-			m_smallest = *smallestPool;
-		}
-
 		/*
-		*  Executes a passed lambda on all the entities that match the
-		*  passed parameter pack.
-		*
-		*  Provided function should follow one of two forms:
-		*  [](Component& c1, Component& c2);
-		*  OR
-		*  [](EntityID id, Component& c1, Component& c2);
+		*  Provided the function arguments are valid, this function will iterate over the smallest pool
+		*  and run the lambda on all entities that contain all the components in the view.
+		* 
+		*  Note: This is the internal implementation: opt for the more user friendly functional ones in the
+		*        public interface.
 		*/
 		template <typename Func>
-		void ForEach(Func&& func) {
+		void ForEachImpl(Func func) {
 			auto inds = std::make_index_sequence<sizeof...(Components)>{};
 
 			// Iterate smallest component pool and compare against other pools in view
@@ -334,6 +316,43 @@ namespace seecs {
 					}
 				}
 			}
+		}
+
+	public:
+
+		// These are the function signatures you can pass to .ForEach()
+		using ForEachFunc = std::function<void(Components&...)>;
+		using ForEachFuncWithID = std::function<void(EntityID, Components&...)>;
+
+		SimpleView(std::array<ISparseSet*, sizeof...(Components)> pools) :
+			m_viewPools{ pools }
+		{
+			SEECS_ASSERT(componentTypes::size == m_viewPools.size(), "Component type list and pool array size mismatch");
+
+			auto smallestPool = std::min_element(m_viewPools.begin(), m_viewPools.end(),
+				[](ISparseSet* a, ISparseSet* b) { return a->Size() < b->Size(); }
+			);
+
+			SEECS_ASSERT(smallestPool != m_viewPools.end(), "Initializing invalid/empty view");
+
+			m_smallest = *smallestPool;
+		}
+
+		/*
+		*  Executes a passed lambda on all the entities that match the
+		*  passed parameter pack.
+		*
+		*  Provided function should follow one of two forms:
+		*  [](Component& c1, Component& c2);
+		*  OR
+		*  [](EntityID id, Component& c1, Component& c2);
+		*/
+		void ForEach(ForEachFunc func) {
+			ForEachImpl(func);
+		}
+
+		void ForEach(ForEachFuncWithID func) {
+			ForEachImpl(func);
 		}
 
 		/*
@@ -381,7 +400,7 @@ namespace seecs {
 
 
 		// Type alias for how we store indices
-		using ind_t = size_t;
+		using ind_t = std::size_t;
 
 
 		// List of IDs already created, but no longer in use
@@ -410,7 +429,7 @@ namespace seecs {
 		EntityID m_maxEntityID = 0;
 
 
-		static constexpr size_t tombstone = std::numeric_limits<ind_t>::max();
+		static constexpr std::size_t tombstone = std::numeric_limits<ind_t>::max();
 
 		template <typename... Components>
 		friend class SimpleView;
@@ -428,7 +447,7 @@ namespace seecs {
 	private:
 
 		template <typename T>
-		size_t GetComponentBitPosition() {
+		std::size_t GetComponentBitPosition() {
 			TypeIndex type = std::type_index(typeid(T));
 			auto it = m_componentBitPosition.find(type);
 			if (it == m_componentBitPosition.end())
@@ -442,7 +461,7 @@ namespace seecs {
 		*/
 		template <typename T>
 		ISparseSet* GetComponentPoolPtr() {
-			size_t bitPos = GetComponentBitPosition<T>();
+			std::size_t bitPos = GetComponentBitPosition<T>();
 
 			if (bitPos == tombstone) {
 				RegisterComponent<T>();
@@ -468,7 +487,7 @@ namespace seecs {
 
 		template <typename Component>
 		void SetComponentBit(ComponentMask& mask, bool val) {
-			size_t bitPos = GetComponentBitPosition<Component>();
+			std::size_t bitPos = GetComponentBitPosition<Component>();
 			SEECS_ASSERT(bitPos != tombstone,
 				"Attempting to operate on unregistered component '" << typeid(Component).name() << "'");
 
@@ -489,7 +508,7 @@ namespace seecs {
 
 		template <typename Component>
 		ComponentMask::reference GetComponentBit(ComponentMask& mask) {
-			size_t bitPos = GetComponentBitPosition<Component>();
+			std::size_t bitPos = GetComponentBitPosition<Component>();
 			SEECS_ASSERT(bitPos != tombstone,
 				"Attempting to operate on unregistered component '" << typeid(Component).name() << "'");
 
@@ -712,11 +731,11 @@ namespace seecs {
 			return { { GetComponentPoolPtr<Components>()... } };
 		}
 
-		size_t GetEntityCount() {
+		std::size_t GetEntityCount() {
 			return m_entityMasks.Size();
 		}
 
-		size_t GetPoolCount() {
+		std::size_t GetPoolCount() {
 			return m_componentPools.size();
 		}
 

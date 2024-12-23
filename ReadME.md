@@ -49,14 +49,24 @@ int main() {
 	ecs.Add<A>(e5);
 	ecs.Add<C>(e5);
 
-	auto view = ecs.View<A, B>();
+	auto view = ecs.View<A, B>(); // Defines a view of entities with components A and B
+	
 	view.ForEach([&](seecs::EntityID id, A& a, B& b) {
 		// ...
 	});
 
+	// OR
+
+	view.ForEach([&](A& a, B& b) {
+		// ...
+	});
+
+	// OR
+
 	auto packed = view.GetPacked();
-	for (auto [id, components]: packed) {
+	for (auto [id, components] : packed) {
 		auto [a, b] = components;
+		// ...
 	}
 
 }
@@ -136,7 +146,7 @@ But in practise, I haven't run into this situation much; so I usually stick with
 
 2) **Via ID lists**
    
-If we know what components an entity will have beforehand, we can utilize the `Get` method and just extract all the components that we need:
+If we know what components an entity will have beforehand, we can utilize the `Get` method and just extract all the components that we need given an Entity ID:
 ```cpp
 vector<EntityID> enemies;
 
@@ -148,8 +158,7 @@ void Update() {
 }
 ```
 This is more rigid, and some call it an anti-pattern in an ECS, but it definitely has its merits and could potentially be more performant than views, since you won't waste any iterations.
-
-There's merit (and obstacles) for each, but I'd recommend sticking to views until you see a need for ID lists. Or use both!
+However, I found .ForEach is typically faster than manually iterating through a list of IDs (.Get<Component>(...) is slower than a view), so I'd recommend sticking to views until you see a need for ID lists.
 
 ### Things I'll get around to:
 
