@@ -96,16 +96,15 @@ namespace seecs {
 	class SparseSet: public ISparseSet {
 	private:
 
-		using Sparse = std::vector<std::size_t>;
+		static constexpr std::size_t SPARSE_MAX_SIZE = 2048;
+		static constexpr std::size_t tombstone = std::numeric_limits<std::size_t>::max();
+
+		using Sparse = std::array<std::size_t, SPARSE_MAX_SIZE>;
 
 		std::vector<Sparse> m_sparsePages;
 
 		std::vector<T> m_dense;
 		std::vector<EntityID> m_denseToEntity; // 1:1 vector where dense index == Entity Index
-
-		const std::size_t SPARSE_MAX_SIZE = 1000;
-
-		static constexpr std::size_t tombstone = std::numeric_limits<std::size_t>::max();
 
 		/*
 		* Inserts a given dense index into the sparse vector, associating
@@ -114,16 +113,16 @@ namespace seecs {
 		* This doesnt actually insert anything into the dense
 		* vector, it simply defines a mapping from ID -> index
 		*/
-		void SetDenseIndex(EntityID id, std::size_t index) {
+		inline void SetDenseIndex(EntityID id, std::size_t index) {
 			std::size_t page = id / SPARSE_MAX_SIZE;
 			std::size_t sparseIndex = id % SPARSE_MAX_SIZE; // Index local to a page
 
-			if (page >= m_sparsePages.size())
+			if (page >= m_sparsePages.size()) {
 				m_sparsePages.resize(page + 1);
+				m_sparsePages[page].fill(tombstone);
+			}
 
 			Sparse& sparse = m_sparsePages[page];
-			if (sparseIndex >= sparse.size())
-				sparse.resize(sparseIndex + 1, tombstone);
 
 			sparse[sparseIndex] = index;
 		}
@@ -132,14 +131,13 @@ namespace seecs {
 		* Returns the dense index for a given entity ID,
 		* or a tombstone (null) value if non-existent
 		*/
-		std::size_t GetDenseIndex(EntityID id) {
+		inline std::size_t GetDenseIndex(EntityID id) {
 			std::size_t page = id / SPARSE_MAX_SIZE;
 			std::size_t sparseIndex = id % SPARSE_MAX_SIZE;
 
 			if (page < m_sparsePages.size()) {
 				Sparse& sparse = m_sparsePages[page];
-				if (sparseIndex < sparse.size())
-					return sparse[sparseIndex];
+				return sparse[sparseIndex];
 			}
 
 			return tombstone;
@@ -150,6 +148,7 @@ namespace seecs {
 		SparseSet() {
 			// Avoids initial copies/allocation, feel free to alter size
 			m_dense.reserve(1000);
+			m_denseToEntity.reserve(1000);
 		}
 
 		T* Set(EntityID id, T obj) {
@@ -591,10 +590,6 @@ namespace seecs {
 		* Deletes an active entity and its associated components.
 		* - Overwrites the given entity to NULL_ENTITY.
 		*
-		* This should NOT be used in the middle of a system while iterating
-		* through entities, as it will remove from the list immediately. Use
-		* FlagEntity(id, true) to mark an entity for deletion, and then DeleteFlagged()
-		* At the end of a frame to clear all flagged entities instead.
 		*/
 		void DeleteEntity(EntityID& id) {
 			SEECS_ASSERT_VALID_ENTITY(id);

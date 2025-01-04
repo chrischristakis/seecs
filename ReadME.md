@@ -79,13 +79,13 @@ Specs: AMD Ryzen 5 5600x (6 cores, 3.7 GHz), Compiled via Visual Studio 2022 on 
 
 | Entities                 | 100      | 10,000 | 1,000,000 |
 | --------                 | ---      | ------ | --------- |
-| `CreateEntity`           | 0.0010ms | 0.34ms | 18.7ms    |
-| `Add<T>`                 | 0.0024ms | 0.56ms | 56.3ms    |
-| `Get<T>`                 | 0.0004ms | 0.22ms | 22.5ms    |
-| `Remove<T>`              | 0.0006ms | 0.45ms | 45.7ms    |
-| `DeleteEntity`           | 0.0011ms | 0.79ms | 95.9ms    |
-| `ForEach (2 components)` | 0.0001ms | 0.10ms | 12.9ms    |
-| `ForEach (4 components)` | 0.0002ms | 0.17ms | 21.3ms    |
+| `CreateEntity`           | 0.0152ms | 0.41ms | 19.5ms    |
+| `Add<T>`                 | 0.0124ms | 0.53ms | 53.8ms    |
+| `Get<T>`                 | 0.0023ms | 0.21ms | 20.5ms    |
+| `Remove<T>`              | 0.0047ms | 0.51ms | 38.7ms    |
+| `DeleteEntity`           | 0.0115ms | 0.74ms | 79.9ms    |
+| `ForEach (2 components)` | 0.0019ms | 0.09ms | 08.6ms    |
+| `ForEach (4 components)` | 0.0018ms | 0.11ms | 16.5ms    |
 
 - Note: These are IDEAL CONDITIONS in which the sparse set is densley populated and packed. Mileage may vary on use case.
 

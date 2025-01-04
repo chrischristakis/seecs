@@ -16,6 +16,7 @@ struct C {
 };
 
 int main() {
+
 	// Base ECS instance, acts as a coordinator
 	seecs::ECS ecs;
 
