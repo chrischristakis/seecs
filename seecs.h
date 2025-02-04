@@ -14,6 +14,7 @@
 #include <type_traits>
 #include <typeindex>
 #include <functional>
+#include <typeinfo>
 
 // Can replace these defines with custom macros elsewhere
 #ifndef SEECS_ASSERT
@@ -47,12 +48,12 @@ namespace seecs {
 	// Set this to NULL_ENTITY if you want no limit.
 	// Once limit is hit, an assert will fire and
 	// the program will terminate.
-	constexpr std::size_t MAX_ENTITIES = NULL_ENTITY;
+	constexpr size_t MAX_ENTITIES = NULL_ENTITY;
 
 
 	// Should be a multiple of 32 (4 bytes), since
 	// bitset overallocates by 4 bytes each time.
-	constexpr std::size_t MAX_COMPONENTS = 64;
+	constexpr size_t MAX_COMPONENTS = 64;
 
 
 	// Base class allows runtime polymorphism
@@ -61,7 +62,7 @@ namespace seecs {
 		virtual ~ISparseSet() = default;
 		virtual void Delete(EntityID) = 0;
 		virtual void Clear() = 0;
-		virtual std::size_t Size() = 0;
+		virtual size_t Size() = 0;
 		virtual bool ContainsEntity(EntityID id) = 0;
 		virtual std::vector<EntityID> GetEntityList() = 0;
 	};
@@ -77,10 +78,10 @@ namespace seecs {
 	struct type_list {
 		using type_tuple = std::tuple<Types...>;
 
-		template <std::size_t Index>
+		template <size_t Index>
 		using get = std::tuple_element_t<Index, type_tuple>;
 
-		static constexpr std::size_t size = sizeof...(Types);
+		static constexpr size_t size = sizeof...(Types);
 	};
 
 
@@ -96,10 +97,10 @@ namespace seecs {
 	class SparseSet: public ISparseSet {
 	private:
 
-		static constexpr std::size_t SPARSE_MAX_SIZE = 2048;
-		static constexpr std::size_t tombstone = std::numeric_limits<std::size_t>::max();
+		static constexpr size_t SPARSE_MAX_SIZE = 2048;
+		static constexpr size_t tombstone = std::numeric_limits<size_t>::max();
 
-		using Sparse = std::array<std::size_t, SPARSE_MAX_SIZE>;
+		using Sparse = std::array<size_t, SPARSE_MAX_SIZE>;
 
 		std::vector<Sparse> m_sparsePages;
 
@@ -113,9 +114,9 @@ namespace seecs {
 		* This doesnt actually insert anything into the dense
 		* vector, it simply defines a mapping from ID -> index
 		*/
-		inline void SetDenseIndex(EntityID id, std::size_t index) {
-			std::size_t page = id / SPARSE_MAX_SIZE;
-			std::size_t sparseIndex = id % SPARSE_MAX_SIZE; // Index local to a page
+		inline void SetDenseIndex(EntityID id, size_t index) {
+			size_t page = id / SPARSE_MAX_SIZE;
+			size_t sparseIndex = id % SPARSE_MAX_SIZE; // Index local to a page
 
 			if (page >= m_sparsePages.size()) {
 				m_sparsePages.resize(page + 1);
@@ -131,9 +132,9 @@ namespace seecs {
 		* Returns the dense index for a given entity ID,
 		* or a tombstone (null) value if non-existent
 		*/
-		inline std::size_t GetDenseIndex(EntityID id) {
-			std::size_t page = id / SPARSE_MAX_SIZE;
-			std::size_t sparseIndex = id % SPARSE_MAX_SIZE;
+		inline size_t GetDenseIndex(EntityID id) {
+			size_t page = id / SPARSE_MAX_SIZE;
+			size_t sparseIndex = id % SPARSE_MAX_SIZE;
 
 			if (page < m_sparsePages.size()) {
 				Sparse& sparse = m_sparsePages[page];
@@ -153,7 +154,7 @@ namespace seecs {
 
 		T* Set(EntityID id, T obj) {
 			// Overwrite existing elements
-			std::size_t index = GetDenseIndex(id);
+			size_t index = GetDenseIndex(id);
 			if (index != tombstone) {
 				m_dense[index] = obj;
 				m_denseToEntity[index] = id;
@@ -171,12 +172,12 @@ namespace seecs {
 		}
 
 		T* Get(EntityID id) {
-			std::size_t index = GetDenseIndex(id);
+			size_t index = GetDenseIndex(id);
 			return (index != tombstone) ? &m_dense[index] : nullptr;
 		}
 
 		T& GetRef(EntityID id) {
-			std::size_t index = GetDenseIndex(id);
+			size_t index = GetDenseIndex(id);
 			if (index == tombstone)
 				SEECS_ASSERT(false, "GetRef called on invalid entity with ID " << id);
 			return m_dense[index];
@@ -184,7 +185,7 @@ namespace seecs {
 
 		void Delete(EntityID id) override {
 
-			std::size_t deletedIndex = GetDenseIndex(id);
+			size_t deletedIndex = GetDenseIndex(id);
 
 			if (m_dense.empty() || deletedIndex == tombstone) return;
 
@@ -198,7 +199,7 @@ namespace seecs {
 			m_denseToEntity.pop_back();
 		}
 
-		std::size_t Size() override {
+		size_t Size() override {
 			return m_dense.size();
 		}
 
@@ -269,13 +270,13 @@ namespace seecs {
 		*	Index the generic pool array and downcast to a specific component pool
 		*   by using compile time indices
 		*/
-		template <std::size_t Index>
+		template <size_t Index>
 		auto GetPoolAt() {
 			using componentType = typename componentTypes::template get<Index>;
 			return static_cast<SparseSet<componentType>*>(m_viewPools[Index]);
 		}
 
-		template <std::size_t... Indices>
+		template <size_t... Indices>
 		auto MakeComponentTuple(EntityID id, std::index_sequence<Indices...>) {
 			return std::make_tuple((std::ref(GetPoolAt<Indices>()->GetRef(id)))...);
 		}
@@ -289,7 +290,7 @@ namespace seecs {
 		*/
 		template <typename Func>
 		void ForEachImpl(Func func) {
-			auto inds = std::make_index_sequence<sizeof...(Components)>{};
+			constexpr auto inds = std::make_index_sequence<sizeof...(Components)>{};
 
 			// Iterate smallest component pool and compare against other pools in view
 			// Note this list is a COPY, allowing safe deletion during iteration.
@@ -373,7 +374,7 @@ namespace seecs {
 			}
 		*/
 		std::vector<Pack> GetPacked() {
-			auto inds = std::make_index_sequence<sizeof...(Components)>{};
+			constexpr auto inds = std::make_index_sequence<sizeof...(Components)>{};
 			std::vector<Pack> result;
 
 			for (EntityID id : m_smallest->GetEntityList())
@@ -395,13 +396,6 @@ namespace seecs {
 		using ComponentMask = std::bitset<MAX_COMPONENTS>;
 
 
-		using TypeIndex = std::type_index;
-
-
-		// Type alias for how we store indices
-		using ind_t = std::size_t;
-
-
 		// List of IDs already created, but no longer in use
 		std::vector<EntityID> m_availableEntities;
 
@@ -411,7 +405,7 @@ namespace seecs {
 
 
 		// Associates ID with name provided in CreateEntity(), mainly for debugging
-		std::unordered_map<EntityID, std::string> m_entityNames;
+		SparseSet<std::string> m_entityNames;
 
 
 		// Holds generic pointers to specific component sparse sets.
@@ -421,17 +415,14 @@ namespace seecs {
 		std::vector<std::unique_ptr<ISparseSet>> m_componentPools;
 
 
-		// Key is component name, value is the bit position in ComponentMask
-		std::unordered_map<TypeIndex, ind_t> m_componentBitPosition;
+		// Helpful little vector that associates component index with a name
+		// Just for debugging.
+		inline static std::vector<std::string> m_componentNames;
+
 
 		// Highest recorded entity ID
 		EntityID m_maxEntityID = 0;
 
-
-		static constexpr std::size_t tombstone = std::numeric_limits<ind_t>::max();
-
-		template <typename... Components>
-		friend class SimpleView;
 
 #define ENTITY_INFO(id) \
 			"['" << GetEntityName(id) << "', ID: " << id << "]"
@@ -445,14 +436,33 @@ namespace seecs {
 
 	private:
 
-		template <typename T>
-		std::size_t GetComponentBitPosition() {
-			TypeIndex type = std::type_index(typeid(T));
-			auto it = m_componentBitPosition.find(type);
-			if (it == m_componentBitPosition.end())
-				return tombstone;
+		static size_t GetNextComponentIndex(std::string typeName) {
+			static size_t ind = 0;
+			m_componentNames.push_back(typeName);
+			return ind++;
+		};
 
-			return it->second;
+		// Returns a unique ID for each type, used to index component pools
+		// - Since it's static, all ECS instances share the same index for each component type.
+        template <typename T>
+        static size_t GetComponentIndex() {
+			static size_t ind = GetNextComponentIndex(typeid(T).name());
+            return ind;
+        };
+
+		// Same as GetComponentTypeIndex, but will register if the component doesn't exist yet.
+		template <typename T>
+		size_t GetOrRegisterComponentIndex() {
+			size_t index = GetComponentIndex<T>();
+
+			if (index >= m_componentPools.size() || !m_componentPools[index])
+				RegisterComponent<T>();
+
+			// Internal error, should never happen outside development
+			SEECS_ASSERT(index < m_componentPools.size() && index >= 0,
+				"Type index out of bounds for component '" << typeid(T).name() << "'");
+
+			return index;
 		}
 
 		/*
@@ -460,17 +470,8 @@ namespace seecs {
 		*/
 		template <typename T>
 		ISparseSet* GetComponentPoolPtr() {
-			std::size_t bitPos = GetComponentBitPosition<T>();
-
-			if (bitPos == tombstone) {
-				RegisterComponent<T>();
-				bitPos = GetComponentBitPosition<T>();
-			}
-
-			SEECS_ASSERT(bitPos < m_componentPools.size() && bitPos >= 0,
-				"(Internal): Attempting to index into m_componentPools with out of range bit position");
-
-			return m_componentPools[bitPos].get();
+			size_t index = GetOrRegisterComponentIndex<T>();
+			return m_componentPools[index].get();
 		}
 
 		/*
@@ -486,31 +487,13 @@ namespace seecs {
 
 		template <typename Component>
 		void SetComponentBit(ComponentMask& mask, bool val) {
-			std::size_t bitPos = GetComponentBitPosition<Component>();
-			SEECS_ASSERT(bitPos != tombstone,
-				"Attempting to operate on unregistered component '" << typeid(Component).name() << "'");
-
+			size_t bitPos = GetComponentIndex<Component>();
 			mask[bitPos] = val;
-		}
-
-		// Create a component bit for the given type
-		template <typename T>
-		void AddComponentBit() {
-			TypeIndex type = std::type_index(typeid(T));
-
-			SEECS_ASSERT(m_componentBitPosition.find(type) == m_componentBitPosition.end(),
-				"Component with name '" << typeid(T).name() << "' already registered");
-
-			m_componentBitPosition[type] = m_componentPools.size();
-			SEECS_ASSERT(m_componentPools.size() != tombstone, "Component bit position equal to tombstone");
 		}
 
 		template <typename Component>
 		ComponentMask::reference GetComponentBit(ComponentMask& mask) {
-			std::size_t bitPos = GetComponentBitPosition<Component>();
-			SEECS_ASSERT(bitPos != tombstone,
-				"Attempting to operate on unregistered component '" << typeid(Component).name() << "'");
-
+			size_t bitPos = GetComponentIndex<Component>();
 			return mask[bitPos];
 		}
 
@@ -534,12 +517,17 @@ namespace seecs {
 
 		ECS() = default;
 
+		template <typename T>
+		static void Define() {
+			static int index = 0;
+			return index;
+		}
+
 		void Reset() {
 			m_availableEntities.clear();
 			m_entityMasks.Clear();
-			m_entityNames.clear();
+			m_entityNames.Clear();
 			m_componentPools.clear();
-			m_componentBitPosition.clear();
 			m_maxEntityID = 0;
 		}
 
@@ -551,8 +539,8 @@ namespace seecs {
 		*    shouldn't be used often since there's no optimization
 		*    in place yet for entities that share a name.
 		*/
-		EntityID CreateEntity(std::string_view name = "") {
-			EntityID id = tombstone;
+		EntityID CreateEntity(std::string name = "") {
+			EntityID id = NULL_ENTITY;
 
 			// Either spawn a new ID or recycle one
 			if (m_availableEntities.size() == 0) {
@@ -564,12 +552,12 @@ namespace seecs {
 				m_availableEntities.pop_back();
 			}
 
-			SEECS_ASSERT(id != tombstone, "Cannot create entity with null ID");
+			SEECS_ASSERT(id != NULL_ENTITY, "Cannot create entity with null ID");
 
 			m_entityMasks.Set(id, {});
 
 			if (!name.empty())
-				m_entityNames[id] = name;
+				m_entityNames.Set(id, name);
 
 			SEECS_INFO("Created entity " << ENTITY_INFO(id));
 			return id;
@@ -579,11 +567,11 @@ namespace seecs {
 			SEECS_ASSERT_VALID_ENTITY(id);
 			SEECS_ASSERT_ALIVE_ENTITY(id);
 
-			auto it = m_entityNames.find(id);
-			if (it == m_entityNames.end())
-				return "Entity";
+			auto name = m_entityNames.Get(id);
+			if (name)
+				return *name;
 
-			return it->second;
+			return "Entity";
 		}
 
 		/*
@@ -604,7 +592,7 @@ namespace seecs {
 					m_componentPools[i]->Delete(id);
 
 			m_entityMasks.Delete(id);
-			m_entityNames.erase(id);
+			m_entityNames.Delete(id);
 			m_availableEntities.push_back(id);
 
 			SEECS_INFO("Deleted entity ['" << name << "', ID: " << id << "]");
@@ -616,12 +604,17 @@ namespace seecs {
 		*/
 		template <typename T>
 		void RegisterComponent() {
-			SEECS_ASSERT(m_componentPools.size() < MAX_COMPONENTS,
+			SEECS_ASSERT(m_componentPools.size() <= MAX_COMPONENTS,
 				"Exceeded max number of registered components");
 
-			AddComponentBit<T>();
+			size_t ind = GetComponentIndex<T>();
+			if (ind >= m_componentPools.size())
+				m_componentPools.resize(ind + 1);
 
-			m_componentPools.push_back(std::make_unique<SparseSet<T>>());
+			SEECS_ASSERT(!m_componentPools[ind],
+				"Attempting to register component '" << typeid(T).name() << "' twice");
+
+			m_componentPools[ind] = std::make_unique<SparseSet<T>>();
 
 			SEECS_INFO("Registered component '" << typeid(T).name() << "'");
 		}
@@ -658,6 +651,7 @@ namespace seecs {
 		template <typename T>
 		T& Get(EntityID id) {
 			SEECS_ASSERT_VALID_ENTITY(id);
+			SEECS_ASSERT_ALIVE_ENTITY(id);
 
 			SparseSet<T>& pool = GetComponentPool<T>();
 			T* component = pool.Get(id);
@@ -675,6 +669,7 @@ namespace seecs {
 		template <typename T>
 		T* GetPtr(EntityID id) {
 			SEECS_ASSERT_VALID_ENTITY(id);
+			SEECS_ASSERT_ALIVE_ENTITY(id);
 
 			SparseSet<T>& pool = GetComponentPool<T>();
 			return pool.Get(id);
@@ -688,6 +683,7 @@ namespace seecs {
 		template <typename T>
 		void Remove(EntityID id) {
 			SEECS_ASSERT_VALID_ENTITY(id);
+			SEECS_ASSERT_ALIVE_ENTITY(id);
 
 			SparseSet<T>& pool = GetComponentPool<T>();
 
@@ -701,18 +697,14 @@ namespace seecs {
 		}
 
 		template <typename... Ts>
-		bool HasAll(EntityID id) {
-			return (Has<Ts>(id) && ...);
+		bool Has(EntityID id) {
+			auto& mask = GetEntityMask(id);
+			return (GetComponentBit<Ts>(mask) && ...);
 		}
 
 		template <typename... Ts>
 		bool HasAny(EntityID id) {
 			return (Has<Ts>(id) || ...);
-		}
-
-		template <typename T>
-		bool Has(EntityID id) {
-			return GetComponentBit<T>(GetEntityMask(id));
 		}
 
 		/*
@@ -726,12 +718,29 @@ namespace seecs {
 			return { { GetComponentPoolPtr<Components>()... } };
 		}
 
-		std::size_t GetEntityCount() {
+		size_t GetEntityCount() {
 			return m_entityMasks.Size();
 		}
 
-		std::size_t GetPoolCount() {
+		size_t GetPoolCount() {
 			return m_componentPools.size();
+		}
+
+		void PrintEntityComponents(EntityID id) {
+			SEECS_ASSERT_VALID_ENTITY(id);
+			SEECS_ASSERT_ALIVE_ENTITY(id);
+
+			std::stringstream ss;
+			std::string prefix = "";
+			ss << ENTITY_INFO(id) << " components: ";
+			ComponentMask& mask = GetEntityMask(id);
+			for (int i = 0; i < MAX_COMPONENTS; i++)
+				if (mask[i] == 1) {
+					ss << prefix << m_componentNames[i];
+					prefix = ", ";
+				}
+			
+			SEECS_MSG(ss.str());
 		}
 
 	};

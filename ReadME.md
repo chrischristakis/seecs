@@ -79,13 +79,15 @@ Specs: AMD Ryzen 5 5600x (6 cores, 3.7 GHz), Compiled via Visual Studio 2022 on 
 
 | Entities                 | 100      | 10,000 | 1,000,000 |
 | --------                 | ---      | ------ | --------- |
-| `CreateEntity`           | 0.0152ms | 0.41ms | 19.5ms    |
-| `Add<T>`                 | 0.0124ms | 0.53ms | 53.8ms    |
-| `Get<T>`                 | 0.0023ms | 0.21ms | 20.5ms    |
-| `Remove<T>`              | 0.0047ms | 0.51ms | 38.7ms    |
-| `DeleteEntity`           | 0.0115ms | 0.74ms | 79.9ms    |
-| `ForEach (2 components)` | 0.0019ms | 0.09ms | 08.6ms    |
-| `ForEach (4 components)` | 0.0018ms | 0.11ms | 16.5ms    |
+| `CreateEntity`           | 0.0112ms | 0.23ms | 34.5ms    |
+| `Add<T>`                 | 0.0359ms | 0.24ms | 36.8ms    |
+| `Get<T>`                 | 0.0011ms | 0.05ms |  5.5ms    |
+| `Remove<T>`              | 0.0027ms | 0.13ms | 14.3ms    |
+| `DeleteEntity`           | 0.0199ms | 0.74ms | 72.9ms    |
+| `ForEach (2 components)` | 0.0024ms | 0.08ms |  9.1ms    |
+| `Get<T> (2 components)`  | 0.0013ms | 0.09ms | 12.0ms    |
+| `ForEach (4 components)` | 0.0027ms | 0.10ms | 18.3ms    |
+| `Get<T> (4 components)`  | 0.0025ms | 0.19ms | 24.3ms    |
 
 - Note: These are IDEAL CONDITIONS in which the sparse set is densley populated and packed. Mileage may vary on use case.
 
@@ -143,8 +145,30 @@ Behind the scenes, a view takes the smallest of it's component pools and iterate
 This means when there's little overlap between entities that share components, there will be wasted iterations.
 But in practise, I haven't run into this situation much; so I usually stick with views.
 
+2) **Via `GetPacked()`**
 
-2) **Via ID lists**
+This does something similar to views, but instead of iterating over the entities, it returns a vector of tuples containing the entity ID and the components that you requested.
+This is useful when you want to iterate over the entities in a different way, like this:
+
+```cpp
+auto packed = view.GetPacked();
+for (auto [id, components] : packed) {
+	auto [a, b] = components;
+	// ...
+}
+```
+
+You can even use indices to access the components if you want to:
+```cpp
+auto packed = view.GetPacked();
+for (size_t i = 0; i < packed.size(); i++) {
+	EntityID id = packed[i].id;
+	auto [transformA, colliderA] = packed[i].components;
+	// ...
+}
+```
+
+3) **Via ID lists**
    
 If we know what components an entity will have beforehand, we can utilize the `Get` method and just extract all the components that we need given an Entity ID:
 ```cpp
@@ -157,12 +181,10 @@ void Update() {
    }
 }
 ```
-This is more rigid, and some call it an anti-pattern in an ECS, but it definitely has its merits and could potentially be more performant than views, since you won't waste any iterations.
-However, I found .ForEach is typically faster than manually iterating through a list of IDs (.Get<Component>(...) is slower than a view), so I'd recommend sticking to views until you see a need for ID lists.
+This is more rigid, and some call it an anti-pattern in an ECS, but it definitely has its merits and could potentially be more performant than views. It's a good idea to benchmark both.
 
 ### Things I'll get around to:
 
-- Events
 - Copying
 - Serialization (...?)
 

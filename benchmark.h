@@ -35,11 +35,12 @@ struct Dummy {
 	T data;
 };
 
-inline void RunBenchmark(const std::size_t I) {
+inline void RunBenchmark(const size_t I) {
 	using namespace seecs;
-	Timer t;
 
+	Timer t;
 	ECS ecs;
+
 	std::vector<EntityID> ids;
 	ids.resize(I);
 
@@ -49,7 +50,6 @@ inline void RunBenchmark(const std::size_t I) {
 		ids[i] = ecs.CreateEntity();
 	float elapsed = t.Elapsed();
 	SEECS_MSG(" - " << elapsed << "s");
-	t.Reset();
 
 	SEECS_MSG("Running 'add component' benchmark [" << I << "] entities");
 	t.Reset();
@@ -58,16 +58,14 @@ inline void RunBenchmark(const std::size_t I) {
 	}
 	elapsed = t.Elapsed();
 	SEECS_MSG(" - " << elapsed << "s");
-	t.Reset();
 
-	SEECS_MSG("Running 'get component' benchmark [" << I << "] entities");
+	SEECS_MSG("Running '.Get<Component>()' benchmark [" << I << "] entities");
 	t.Reset();
 	for (size_t i = 0; i < I; i++) {
 		ecs.Get<Dummy<int>>(ids[i]);
 	}
 	elapsed = t.Elapsed();
 	SEECS_MSG(" - " << elapsed << "s");
-	t.Reset();
 
 	SEECS_MSG("Running 'remove component' benchmark [" << I << "] entities");
 	t.Reset();
@@ -76,7 +74,6 @@ inline void RunBenchmark(const std::size_t I) {
 	}
 	elapsed = t.Elapsed();
 	SEECS_MSG(" - " << elapsed << "s");
-	t.Reset();
 
 	SEECS_MSG("Running 'delete entity' benchmark [" << I << "] entities");
 	t.Reset();
@@ -85,7 +82,6 @@ inline void RunBenchmark(const std::size_t I) {
 	}
 	elapsed = t.Elapsed();
 	SEECS_MSG(" - " << elapsed << "s");
-	t.Reset();
 
 	ecs.Reset();
 	for (size_t i = 0; i < I; i++) {
@@ -94,13 +90,21 @@ inline void RunBenchmark(const std::size_t I) {
 		ecs.Add<Dummy<double>>(ids[i], {});
 	}
 
-	SEECS_MSG("Running 'foreach (2 component)' benchmark [" << I << "] entities");
+	SEECS_MSG("Running 'foreach (2 components)' benchmark [" << I << "] entities");
 	auto view1 = ecs.View<Dummy<int>, Dummy<double>>();
 	t.Reset();
 	view1.ForEach([](Dummy<int>& _, Dummy<double>& __) {});
 	elapsed = t.Elapsed();
 	SEECS_MSG(" - " << elapsed << "s");
+
+	SEECS_MSG("Running '.Get<...>() (2 components)' benchmark [" << I << "] entities");
 	t.Reset();
+	for (size_t i = 0; i < I; i++) {
+		ecs.Get<Dummy<int>>(ids[i]);
+		ecs.Get<Dummy<double>>(ids[i]);
+	}
+	elapsed = t.Elapsed();
+	SEECS_MSG(" - " << elapsed << "s");
 
 	ecs.Reset();
 	for (size_t i = 0; i < I; i++) {
@@ -111,13 +115,24 @@ inline void RunBenchmark(const std::size_t I) {
 		ecs.Add<Dummy<float>>(ids[i], {});
 	}
 
-	SEECS_MSG("Running 'foreach (4 component)' benchmark [" << I << "] entities");
+	SEECS_MSG("Running 'foreach (4 components)' benchmark [" << I << "] entities");
 	
 	auto view2 = ecs.View<Dummy<int>, Dummy<double>, Dummy<long>, Dummy<float>>();
 	t.Reset();
 	view2.ForEach([](Dummy<int>& _, Dummy<double>& __, Dummy<long>& ___, Dummy<float>& ____) {});
 	elapsed = t.Elapsed();
 	SEECS_MSG(" - " << elapsed << "s");
+
+	SEECS_MSG("Running '.Get<...>() (4 components)' benchmark [" << I << "] entities");
 	t.Reset();
+	for (size_t i = 0; i < I; i++) {
+		ecs.Get<Dummy<int>>(ids[i]);
+		ecs.Get<Dummy<double>>(ids[i]);
+		ecs.Get<Dummy<long>>(ids[i]);
+		ecs.Get<Dummy<float>>(ids[i]);
+	}
+	elapsed = t.Elapsed();
+	SEECS_MSG(" - " << elapsed << "s");
+
 
 }
