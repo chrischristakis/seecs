@@ -35,7 +35,8 @@ int main() {
 	ecs.Add<A>(e3);
 	ecs.Add<C>(e3);
 
-	ecs.Add<B>(e4);
+	ecs.Add<A>(e4, {100});
+	ecs.Add<B>(e4, {200});
 
 	ecs.Add<A>(e5);
 	ecs.Add<C>(e5);
@@ -48,7 +49,9 @@ int main() {
 
 	// OR
 
-	view.ForEach([&](A& a, B& b) {
+	// Components with component 'A' but not 'B' OR 'C'
+	auto excludedView = ecs.View<A>().Without<B, C>();
+	excludedView.ForEach([&](A& a) {
 		// ...
 	});
 

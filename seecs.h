@@ -239,157 +239,11 @@ namespace seecs {
 
 	};
 
-
-
-	/*
-	*  A SimpleView is a basic implementation of a view, allowing iteration based
-	*  on the passed in Component parameter pack.
-	*/
-	template <typename... Components>
-	class SimpleView {
-	private:
-
-		using componentTypes = type_list<Components...>;
-
-		std::array<ISparseSet*, sizeof...(Components)> m_viewPools;
-
-		// Sparse set with the smallest number of components,
-		// basis for ForEach iterations.
-		ISparseSet* m_smallest = nullptr;
-
-		/*
-		*	Returns true iff all the pools in the view contain the given Entity
-		*/
-		bool AllContain(EntityID id) {
-			return std::all_of(m_viewPools.begin(), m_viewPools.end(), [id](ISparseSet* pool) {
-				return pool->ContainsEntity(id);
-			});
-		}
-
-		/*
-		*	Index the generic pool array and downcast to a specific component pool
-		*   by using compile time indices
-		*/
-		template <size_t Index>
-		auto GetPoolAt() {
-			using componentType = typename componentTypes::template get<Index>;
-			return static_cast<SparseSet<componentType>*>(m_viewPools[Index]);
-		}
-
-		template <size_t... Indices>
-		auto MakeComponentTuple(EntityID id, std::index_sequence<Indices...>) {
-			return std::make_tuple((std::ref(GetPoolAt<Indices>()->GetRef(id)))...);
-		}
-
-		/*
-		*  Provided the function arguments are valid, this function will iterate over the smallest pool
-		*  and run the lambda on all entities that contain all the components in the view.
-		* 
-		*  Note: This is the internal implementation: opt for the more user friendly functional ones in the
-		*        public interface.
-		*/
-		template <typename Func>
-		void ForEachImpl(Func func) {
-			constexpr auto inds = std::make_index_sequence<sizeof...(Components)>{};
-
-			// Iterate smallest component pool and compare against other pools in view
-			// Note this list is a COPY, allowing safe deletion during iteration.
-			for (EntityID id : m_smallest->GetEntityList()) {
-				if (AllContain(id)) {
-
-					// This branch is for [](EntityID id, Component& c1, Component& c2);
-					// constexpr denotes this is evaluated at compile time, which prunes
-					// invalid function call branches before runtime to prevent the
-					// typical invoke errors you'd see after building.
-					if constexpr (std::is_invocable_v<Func, EntityID, Components&...>) {
-						std::apply(func, std::tuple_cat(std::make_tuple(id), MakeComponentTuple(id, inds)));
-					}
-
-					// This branch is for [](Component& c1, Component& c2);
-					else if constexpr (std::is_invocable_v<Func, Components&...>) {
-						std::apply(func, MakeComponentTuple(id, inds));
-					}
-
-					else {
-						SEECS_ASSERT(false,
-							"Bad lambda provided to .ForEach(), parameter pack does not match lambda args");
-					}
-				}
-			}
-		}
-
-	public:
-
-		// These are the function signatures you can pass to .ForEach()
-		using ForEachFunc = std::function<void(Components&...)>;
-		using ForEachFuncWithID = std::function<void(EntityID, Components&...)>;
-
-		SimpleView(std::array<ISparseSet*, sizeof...(Components)> pools) :
-			m_viewPools{ pools }
-		{
-			SEECS_ASSERT(componentTypes::size == m_viewPools.size(), "Component type list and pool array size mismatch");
-
-			auto smallestPool = std::min_element(m_viewPools.begin(), m_viewPools.end(),
-				[](ISparseSet* a, ISparseSet* b) { return a->Size() < b->Size(); }
-			);
-
-			SEECS_ASSERT(smallestPool != m_viewPools.end(), "Initializing invalid/empty view");
-
-			m_smallest = *smallestPool;
-		}
-
-		/*
-		*  Executes a passed lambda on all the entities that match the
-		*  passed parameter pack.
-		*
-		*  Provided function should follow one of two forms:
-		*  [](Component& c1, Component& c2);
-		*  OR
-		*  [](EntityID id, Component& c1, Component& c2);
-		*/
-		void ForEach(ForEachFunc func) {
-			ForEachImpl(func);
-		}
-
-		void ForEach(ForEachFuncWithID func) {
-			ForEachImpl(func);
-		}
-
-		/*
-		*	Holds an entity id and a tuple of references to the components returned by the view.
-		*	Access components that are part of a pack like such:
-		*	- auto [componentA, componentB] = pack.components;
-		*/
-		struct Pack {
-			EntityID id;
-			std::tuple<Components&...> components;
-		};
-
-		/*
-		*  Useful when you want a way to iterate a view via indices.
-		*  e.g:
-			auto packed = ecs.View<A, B>().GetPacked();
-			for (size_t i = 0; i < packed.size(); i++) {
-				auto [a1, b1] = packed[i].components;
-			}
-		*/
-		std::vector<Pack> GetPacked() {
-			constexpr auto inds = std::make_index_sequence<sizeof...(Components)>{};
-			std::vector<Pack> result;
-
-			for (EntityID id : m_smallest->GetEntityList())
-				if (AllContain(id))
-					result.push_back({ id, MakeComponentTuple(id, inds) });
-			return result;
-		}
-
-
-	};
-
-
-
 	class ECS {
 	private:
+
+		template<typename...>
+		friend class SimpleView;
 
 		// Each bit in the mask represents a component,
 		// '1' == active, '0' == inactive.
@@ -714,8 +568,7 @@ namespace seecs {
 		*/
 		template <typename... Components>
 		SimpleView<Components...> View() {
-			// Pass a copy of array from fold expression into view.
-			return { { GetComponentPoolPtr<Components>()... } };
+			return { this };
 		}
 
 		size_t GetEntityCount() {
@@ -742,6 +595,167 @@ namespace seecs {
 			
 			SEECS_MSG(ss.str());
 		}
+
+	};
+
+	/*
+	*  A SimpleView is a basic implementation of a view, allowing iteration based
+	*  on the passed in Component parameter pack.
+	*/
+	template <typename... Components>
+	class SimpleView {
+	private:
+
+		using componentTypes = type_list<Components...>;
+
+		ECS* m_ecs;
+
+		std::array<ISparseSet*, sizeof...(Components)> m_viewPools;
+		std::vector<ISparseSet*> m_excludedPools;
+
+		// Sparse set with the smallest number of components,
+		// basis for ForEach iterations.
+		ISparseSet* m_smallest = nullptr;
+
+		/*
+		*	Returns true iff all the pools in the view contain the given Entity
+		*/
+		bool AllContain(EntityID id) {
+			return std::all_of(m_viewPools.begin(), m_viewPools.end(), [id](ISparseSet* pool) {
+				return pool->ContainsEntity(id);
+			});
+		}
+
+		bool NotExcluded(EntityID id) {
+			if (m_excludedPools.empty()) return true;
+			return std::none_of(m_excludedPools.begin(), m_excludedPools.end(), [id](ISparseSet* pool) {
+				return pool->ContainsEntity(id);
+			});
+		}
+
+		/*
+		*	Index the generic pool array and downcast to a specific component pool
+		*   by using compile time indices
+		*/
+		template <size_t Index>
+		auto GetPoolAt() {
+			using componentType = typename componentTypes::template get<Index>;
+			return static_cast<SparseSet<componentType>*>(m_viewPools[Index]);
+		}
+
+		template <size_t... Indices>
+		auto MakeComponentTuple(EntityID id, std::index_sequence<Indices...>) {
+			return std::make_tuple((std::ref(GetPoolAt<Indices>()->GetRef(id)))...);
+		}
+
+		/*
+		*  Provided the function arguments are valid, this function will iterate over the smallest pool
+		*  and run the lambda on all entities that contain all the components in the view.
+		*
+		*  Note: This is the internal implementation: opt for the more user friendly functional ones in the
+		*        public interface.
+		*/
+		template <typename Func>
+		void ForEachImpl(Func func) {
+			constexpr auto inds = std::make_index_sequence<sizeof...(Components)>{};
+
+			// Iterate smallest component pool and compare against other pools in view
+			// Note this list is a COPY, allowing safe deletion during iteration.
+			for (EntityID id : m_smallest->GetEntityList()) {
+				if (AllContain(id) && NotExcluded(id)) {
+
+					// This branch is for [](EntityID id, Component& c1, Component& c2);
+					// constexpr denotes this is evaluated at compile time, which prunes
+					// invalid function call branches before runtime to prevent the
+					// typical invoke errors you'd see after building.
+					if constexpr (std::is_invocable_v<Func, EntityID, Components&...>) {
+						std::apply(func, std::tuple_cat(std::make_tuple(id), MakeComponentTuple(id, inds)));
+					}
+
+					// This branch is for [](Component& c1, Component& c2);
+					else if constexpr (std::is_invocable_v<Func, Components&...>) {
+						std::apply(func, MakeComponentTuple(id, inds));
+					}
+
+					else {
+						SEECS_ASSERT(false,
+							"Bad lambda provided to .ForEach(), parameter pack does not match lambda args");
+					}
+				}
+			}
+		}
+
+	public:
+
+		// These are the function signatures you can pass to .ForEach()
+		using ForEachFunc = std::function<void(Components&...)>;
+		using ForEachFuncWithID = std::function<void(EntityID, Components&...)>;
+
+		SimpleView(ECS* ecs) :
+			m_ecs(ecs), m_viewPools{ ecs->GetComponentPoolPtr<Components>()... }
+		{
+			SEECS_ASSERT(componentTypes::size == m_viewPools.size(), "Component type list and pool array size mismatch");
+
+			auto smallestPool = std::min_element(m_viewPools.begin(), m_viewPools.end(),
+				[](ISparseSet* a, ISparseSet* b) { return a->Size() < b->Size(); }
+			);
+
+			SEECS_ASSERT(smallestPool != m_viewPools.end(), "Initializing invalid/empty view");
+
+			m_smallest = *smallestPool;
+		}
+
+		template <typename... ExcludedComponents>
+		SimpleView& Without() {
+			m_excludedPools = { m_ecs->GetComponentPoolPtr<ExcludedComponents>()... };
+			return *this;
+		}
+
+		/*
+		*  Executes a passed lambda on all the entities that match the
+		*  passed parameter pack.
+		*
+		*  Provided function should follow one of two forms:
+		*  [](Component& c1, Component& c2);
+		*  OR
+		*  [](EntityID id, Component& c1, Component& c2);
+		*/
+		void ForEach(ForEachFunc func) {
+			ForEachImpl(func);
+		}
+
+		void ForEach(ForEachFuncWithID func) {
+			ForEachImpl(func);
+		}
+
+		/*
+		*	Holds an entity id and a tuple of references to the components returned by the view.
+		*	Access components that are part of a pack like such:
+		*	- auto [componentA, componentB] = pack.components;
+		*/
+		struct Pack {
+			EntityID id;
+			std::tuple<Components&...> components;
+		};
+
+		/*
+		*  Useful when you want a way to iterate a view via indices.
+		*  e.g:
+			auto packed = ecs.View<A, B>().GetPacked();
+			for (size_t i = 0; i < packed.size(); i++) {
+				auto [a1, b1] = packed[i].components;
+			}
+		*/
+		std::vector<Pack> GetPacked() {
+			constexpr auto inds = std::make_index_sequence<sizeof...(Components)>{};
+			std::vector<Pack> result;
+
+			for (EntityID id : m_smallest->GetEntityList())
+				if (AllContain(id))
+					result.push_back({ id, MakeComponentTuple(id, inds) });
+			return result;
+		}
+
 
 	};
 
