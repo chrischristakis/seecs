@@ -751,7 +751,7 @@ namespace seecs {
 			std::vector<Pack> result;
 
 			for (EntityID id : m_smallest->GetEntityList())
-				if (AllContain(id))
+				if (AllContain(id) && NotExcluded(id))
 					result.push_back({ id, MakeComponentTuple(id, inds) });
 			return result;
 		}

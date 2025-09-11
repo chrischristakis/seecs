@@ -26,7 +26,7 @@ int main() {
 	seecs::EntityID e4 = ecs.CreateEntity();
 	seecs::EntityID e5 = ecs.CreateEntity();
 
-	ecs.Add<A>(e1, {5});  // Initialize component A(5)
+	ecs.Add<A>(e1, { 5 });  // Initialize component A(5)
 	ecs.Add<B>(e1); // Default constructor called
 	ecs.Add<C>(e1);
 
@@ -35,17 +35,17 @@ int main() {
 	ecs.Add<A>(e3);
 	ecs.Add<C>(e3);
 
-	ecs.Add<A>(e4, {100});
-	ecs.Add<B>(e4, {200});
+	ecs.Add<A>(e4, { 100 });
+	ecs.Add<B>(e4, { 200 });
 
 	ecs.Add<A>(e5);
 	ecs.Add<C>(e5);
 
 	auto view = ecs.View<A, B>();
-	
+
 	view.ForEach([&](seecs::EntityID id, A& a, B& b) {
 		// ...
-	});
+		});
 
 	// OR
 
@@ -53,7 +53,7 @@ int main() {
 	auto excludedView = ecs.View<A>().Without<B, C>();
 	excludedView.ForEach([&](A& a) {
 		// ...
-	});
+		});
 
 	// OR
 
@@ -62,4 +62,5 @@ int main() {
 		auto [a, b] = components;
 		// ...
 	}
+
 }

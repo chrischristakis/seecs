@@ -99,16 +99,70 @@ If you want to know how I add systems in seecs, I simply just do something like 
 ```cpp
 namespace MovementSystem {
 
-  void Move(ECS& ecs) {
-    ecs.View<Transform, Physics>().ForEach([](Transform& transform, Physics& physics) {
-      transform.position += physics.velocity;
+  static void Update(ECS& ecs, float dt) {
+	auto view = ecs.View<Transform, Physics>().Without<Frozen>(); // Queries entities with Transform and Physics, but omits 'Frozen' entities
+
+    view.ForEach([dt](EntityID id, Transform& transform, Physics& physics) {
+      transform.position += physics.velocity * dt;
     });
   }
 
 }
+
+// In Main loop:
+MovementSystem::Update(ecs, deltaTime);
 ```
 
 And that's it. It's on you to manage these systems however you want. You can make them function like I did here, or make a system it's own class that might even manage the entities belonging to it, whatever.
+
+Here are some functions you might find useful when making systems:
+```
+// You can manually retrieve components via the Entity ID:
+A& component = ecs.Get<A>(id);
+A* componentPoints = ecs.GetPtr<A>(id);
+
+// You can also check if an entity has a component(s):
+bool hasComponent = ecs.Has<A, B, C>(id); // true if entity has ALL components
+bool hasAny = ecs.HasAny<A, B, C>(id); // true if entity has ANY of the components
+
+// Resets ECS to initial state, removing all entities/components
+ecs.Reset();
+```
+
+### A quick guide to components
+
+Components in an ECS should be nothing but data, and systems should handle the processing. Components typically should not reference or be aware of eachother.
+
+Due to the way components are stored in sparse sets (where they can move around frequently during regular operaiton) a component must define
+a default constructor, copy constructor, copy assignment operator, move constructor, and move assignment operator.
+
+Most components should be trivially copyable/movable, so these should be defined implicitly by the compiler (and it's in your interest in a data-driven design to keep them that way!)
+
+Here's an example of a nice, 'good' components:
+```cpp
+struct Sprite {
+	const Texture* src;
+	SpriteRegion region;
+	glm::vec3 tint{ 1, 1, 1 };
+	float rotation = 0;
+	bool flipHorizontal = false;
+};
+```
+
+All of these fields can be copied/moved trivially, and sparse sets like the simplicity.
+
+Here's an example of a component you might run into trouble with:
+```cpp
+struct BadComponents {
+	std::unordered_map<int, std::unique_ptr<int>> data;
+}
+```
+
+This component will not compile, since seecs will try and move it around in memory, but `std::unique_ptr` is not copyable.
+
+As a VERY general rule of thumb (which I have been on record for breaking, )
+
+
 
 ## Deleting entities
 
