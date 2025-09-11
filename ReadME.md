@@ -72,6 +72,10 @@ int main() {
 }
 ```
 
+
+If you'd like a more practical example, I made a game with an older build of this library [here](https://github.com/chrischristakis/ClusterPutt).
+
+
 ### Benchmarks
 
 Specs: AMD Ryzen 5 5600x (6 cores, 3.7 GHz), Compiled via Visual Studio 2022 on a windows machine.
