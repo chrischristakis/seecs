@@ -120,7 +120,7 @@ MovementSystem::Update(ecs, deltaTime);
 And that's it. It's on you to manage these systems however you want. You can make them function like I did here, or make a system it's own class that might even manage the entities belonging to it, whatever.
 
 Here are some functions you might find useful when making systems:
-```
+```cpp
 // You can manually retrieve components via the Entity ID:
 A& component = ecs.Get<A>(id);
 A* componentPoints = ecs.GetPtr<A>(id);
@@ -137,7 +137,7 @@ ecs.Reset();
 
 Components in an ECS should be nothing but data, and systems should handle the processing. Components typically should not reference or be aware of eachother.
 
-Due to the way components are stored in sparse sets (where they can move around frequently during regular operaiton) a component must define
+Due to the way components are stored in sparse sets (where they can move around frequently during regular operation) a component must define
 a default constructor, copy constructor, copy assignment operator, move constructor, and move assignment operator.
 
 Most components should be trivially copyable/movable, so these should be defined implicitly by the compiler (and it's in your interest in a data-driven design to keep them that way!)
@@ -164,9 +164,8 @@ struct BadComponents {
 
 This component will not compile, since seecs will try and move it around in memory, but `std::unique_ptr` is not copyable.
 
-As a VERY general rule of thumb (which I have been on record for breaking, )
-
-
+As a VERY general rule of thumb (which I have been on record for breaking) keep big structures (vectors, maps) and pointers out of your components as *much* as possible.
+If you need to use a pointer (like the 'Sprite' component above) prefer to use flyweights.
 
 ## Deleting entities
 
