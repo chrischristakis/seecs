@@ -239,6 +239,9 @@ namespace seecs {
 
 	};
 
+	template <typename... Components>
+	class SimpleView;
+
 	class ECS {
 	private:
 
@@ -372,7 +375,7 @@ namespace seecs {
 		ECS() = default;
 
 		template <typename T>
-		static void Define() {
+		static int Define() {
 			static int index = 0;
 			return index;
 		}
