@@ -37,6 +37,9 @@
 
 namespace seecs {
 
+	template<typename...>
+	class SimpleView;
+
 	// In ECS, entities are simply just indices which group data
 	using EntityID = uint64_t;
 
@@ -119,8 +122,10 @@ namespace seecs {
 			size_t sparseIndex = id % SPARSE_MAX_SIZE; // Index local to a page
 
 			if (page >= m_sparsePages.size()) {
+				size_t oldSize = m_sparsePages.size();
 				m_sparsePages.resize(page + 1);
-				m_sparsePages[page].fill(tombstone);
+				for (size_t p = oldSize; p < m_sparsePages.size(); ++p)
+					m_sparsePages[p].fill(tombstone);
 			}
 
 			Sparse& sparse = m_sparsePages[page];
@@ -283,7 +288,7 @@ namespace seecs {
 
 #define SEECS_ASSERT_VALID_ENTITY(id) \
 			SEECS_ASSERT(id != NULL_ENTITY, "NULL_ENTITY cannot be operated on by the ECS") \
-			SEECS_ASSERT(id < m_maxEntityID && id >= 0, "Invalid entity ID out of bounds: " << id);
+			SEECS_ASSERT(id < m_maxEntityID, "Invalid entity ID out of bounds: " << id);
 
 #define SEECS_ASSERT_ALIVE_ENTITY(id) \
 			SEECS_ASSERT(m_entityMasks.Get(id) != nullptr, "Attempting to access inactive entity with ID: " << id);
@@ -301,8 +306,10 @@ namespace seecs {
         template <typename T>
         static size_t GetComponentIndex() {
 			static size_t ind = GetNextComponentIndex(typeid(T).name());
+			SEECS_ASSERT(ind < MAX_COMPONENTS,
+				"Exceeded MAX_COMPONENTS while registering '" << typeid(T).name() << "'");
             return ind;
-        };
+        }
 
 		// Same as GetComponentTypeIndex, but will register if the component doesn't exist yet.
 		template <typename T>
@@ -313,7 +320,7 @@ namespace seecs {
 				RegisterComponent<T>();
 
 			// Internal error, should never happen outside development
-			SEECS_ASSERT(index < m_componentPools.size() && index >= 0,
+			SEECS_ASSERT(index < m_componentPools.size(),
 				"Type index out of bounds for component '" << typeid(T).name() << "'");
 
 			return index;
@@ -342,12 +349,16 @@ namespace seecs {
 		template <typename Component>
 		void SetComponentBit(ComponentMask& mask, bool val) {
 			size_t bitPos = GetComponentIndex<Component>();
+			SEECS_ASSERT(bitPos < MAX_COMPONENTS,
+				"Component bit index out of range for '" << typeid(Component).name() << "'");
 			mask[bitPos] = val;
 		}
 
 		template <typename Component>
 		ComponentMask::reference GetComponentBit(ComponentMask& mask) {
 			size_t bitPos = GetComponentIndex<Component>();
+			SEECS_ASSERT(bitPos < MAX_COMPONENTS,
+				"Component bit index out of range for '" << typeid(Component).name() << "'");
 			return mask[bitPos];
 		}
 
@@ -374,7 +385,7 @@ namespace seecs {
 		template <typename T>
 		static void Define() {
 			static int index = 0;
-			return index;
+			(void)index;
 		}
 
 		void Reset() {
@@ -441,7 +452,7 @@ namespace seecs {
 			ComponentMask& mask = GetEntityMask(id);
 
 			// Destroy component associations
-			for (int i = 0; i < MAX_COMPONENTS; i++)
+			for (size_t i = 0; i < MAX_COMPONENTS; i++)
 				if (mask[i] == 1)
 					m_componentPools[i]->Delete(id);
 
@@ -587,7 +598,7 @@ namespace seecs {
 			std::string prefix = "";
 			ss << ENTITY_INFO(id) << " components: ";
 			ComponentMask& mask = GetEntityMask(id);
-			for (int i = 0; i < MAX_COMPONENTS; i++)
+			for (size_t i = 0; i < MAX_COMPONENTS; i++)
 				if (mask[i] == 1) {
 					ss << prefix << m_componentNames[i];
 					prefix = ", ";
