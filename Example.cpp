@@ -1,4 +1,4 @@
-#define SEECS_INFO_ENABLED
+//#define SEECS_INFO_ENABLED
 #include "seecs.h"
 #include "benchmark.h"
 
@@ -17,50 +17,62 @@ struct C {
 
 int main() {
 
-	// Base ECS instance, acts as a coordinator
-	seecs::ECS ecs;
+	/*
+	* 
+	* TODO: 
+	* 1) Naming convention update (snake_case for functions+properties, PascalCase for types, CAPS_SNAKE for consts)
+	* 2) Run benchmarks and log into readme in microseconds
+	* 3) update readme with new conventions
+	* 4) Close/Reply to issues on github
+	* 
+	*/
 
-	seecs::EntityID e1 = ecs.CreateEntity();
-	seecs::EntityID e2 = ecs.CreateEntity("e2"); // Custom name for debugging
-	seecs::EntityID e3 = ecs.CreateEntity();
-	seecs::EntityID e4 = ecs.CreateEntity();
-	seecs::EntityID e5 = ecs.CreateEntity();
+	RunBenchmark(1000000);
+	//	
+	//// Base ECS instance, acts as a coordinator
+	//seecs::ECS ecs;
 
-	ecs.Add<A>(e1, { 5 });  // Initialize component A(5)
-	ecs.Add<B>(e1); // Default constructor called
-	ecs.Add<C>(e1);
+	//seecs::Entity e1 = ecs.CreateEntity();
+	//seecs::Entity e2 = ecs.CreateEntity("e2"); // Custom name for debugging
+	//seecs::Entity e3 = ecs.CreateEntity();
+	//seecs::Entity e4 = ecs.CreateEntity();
+	//seecs::Entity e5 = ecs.CreateEntity();
 
-	ecs.Add<A>(e2);
+	//ecs.Add<A>(e1, { 5 });  // Initialize component A(5)
+	//ecs.Add<B>(e1); // Default constructor called
+	//ecs.Add<C>(e1);
 
-	ecs.Add<A>(e3);
-	ecs.Add<C>(e3);
+	//ecs.Add<A>(e2);
 
-	ecs.Add<A>(e4, { 100 });
-	ecs.Add<B>(e4, { 200 });
+	//ecs.Add<A>(e3);
+	//ecs.Add<C>(e3);
 
-	ecs.Add<A>(e5);
-	ecs.Add<C>(e5);
+	//ecs.Add<A>(e4, { 100 });
+	//ecs.Add<B>(e4, { 200 });
 
-	auto view = ecs.View<A, B>();
+	//ecs.Add<A>(e5);
+	//ecs.Add<C>(e5);
 
-	view.ForEach([&](seecs::EntityID id, A& a, B& b) {
-		// ...
-		});
+	//auto view = ecs.View<A, B>();
 
-	// OR
+	//view.ForEach([&](seecs::Entity entity, A& a, B& b) {
+	//	// ...
+	//});
 
-	// Components with component 'A' but not 'B' OR 'C'
-	auto excludedView = ecs.View<A>().Without<B, C>();
-	excludedView.ForEach([&](A& a) {
-		// ...
-		});
+	//// OR
 
-	// OR
+	//// Components with component 'A' but not 'B' OR 'C'
+	//auto excludedView = ecs.View<A>().Without<B, C>();
+	//excludedView.ForEach([&](A& a) {
+	//	// ...
+	//});
 
-	auto packed = view.GetPacked();
-	for (auto [id, components] : packed) {
-		auto [a, b] = components;
-		// ...
-	}
+	//// OR
+
+	//auto packed = view.GetPacked();
+	//for (auto [entity, components] : packed) {
+	//	auto [a, b] = components;
+	//	// ...
+	//}
 
 }
