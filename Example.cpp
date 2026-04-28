@@ -1,66 +1,64 @@
-#define SEECS_INFO_ENABLED
+#define SEECS_INFO_ENABLED // Enable verbose logging
 #include "seecs.h"
 #include "benchmark.h"
 
-// Components hold data
+// Components simply hold data
 struct A {
 	int x = 0;
 };
 
 struct B {
-	int y = 0;
+	float y = 0;
 };
 
 struct C {
-	int z = 0;
+	bool z = false;
+	int w = 0;
 };
 
 int main() {
-
-	// Base ECS instance, acts as a coordinator
+	// Base ECS instance
 	seecs::ECS ecs;
+	
+	// Create entities
+	seecs::Entity entity1 = ecs.create_entity();
+	seecs::Entity entity2 = ecs.create_entity("Entity 2"); // Custom name for debugging
+	seecs::Entity entity3 = ecs.create_entity();
+	seecs::Entity entity4 = ecs.create_entity();
+	seecs::Entity entity5 = ecs.create_entity();
+	
+	// Attach components to entities
+	ecs.add<A>(entity1, { 5 });  // Initialize component constructor A(5)
+	ecs.add<B>(entity1); // Default constructor called
+	C& c = ecs.add<C>(entity1); // Get a reference to the component
+	
+	ecs.add<A>(entity2);
+	
+	ecs.add<A>(entity3);
+	ecs.add<C>(entity3);
+	
+	ecs.add<A>(entity4);
+	ecs.add<B>(entity4);
+	
+	ecs.add<A>(entity5);
+	ecs.add<C>(entity5);
+	
+	// Initialize a view to iterate entities with components A and B
+	auto view = ecs.view<A, B>();
+	view.for_each([&](seecs::Entity entity, A& a, B& b) {
+		// Lambda executes on: entity1, entity4
+	});
+	
+	// Initialize a view to iterate entities that have component A, but not B or C
+	auto excluded_view = ecs.view<A>().without<B, C>();
+	excluded_view.for_each([&](A& a) {
+		// Lambda executes on: entity2
+	});
 
-	seecs::EntityID e1 = ecs.CreateEntity();
-	seecs::EntityID e2 = ecs.CreateEntity("e2"); // Custom name for debugging
-	seecs::EntityID e3 = ecs.CreateEntity();
-	seecs::EntityID e4 = ecs.CreateEntity();
-	seecs::EntityID e5 = ecs.CreateEntity();
-
-	ecs.Add<A>(e1, { 5 });  // Initialize component A(5)
-	ecs.Add<B>(e1); // Default constructor called
-	ecs.Add<C>(e1);
-
-	ecs.Add<A>(e2);
-
-	ecs.Add<A>(e3);
-	ecs.Add<C>(e3);
-
-	ecs.Add<A>(e4, { 100 });
-	ecs.Add<B>(e4, { 200 });
-
-	ecs.Add<A>(e5);
-	ecs.Add<C>(e5);
-
-	auto view = ecs.View<A, B>();
-
-	view.ForEach([&](seecs::EntityID id, A& a, B& b) {
-		// ...
-		});
-
-	// OR
-
-	// Components with component 'A' but not 'B' OR 'C'
-	auto excludedView = ecs.View<A>().Without<B, C>();
-	excludedView.ForEach([&](A& a) {
-		// ...
-		});
-
-	// OR
-
-	auto packed = view.GetPacked();
-	for (auto [id, components] : packed) {
-		auto [a, b] = components;
+	// Calculate view upfront into a 'packed' list and use a regular for loop
+	auto packed = view.packed();
+	for (auto [entity, components] : packed) {
+		auto& [a, b] = components;
 		// ...
 	}
-
 }
