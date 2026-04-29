@@ -229,7 +229,7 @@ view.for_each([](Entity entity, A& a, B& b) { '
 	//... 
 });
 ```
-Behind the scenes, a view takes the smallest of it's component pools and iterates all of the entities in it, checking if it has the other components.
+Behind the scenes, a view takes the smallest of its component pools and iterates all of the entities in it, checking if every entity in the smallest pool has the other components.
 
 ```
 SimpleView<A, B, C>
@@ -242,7 +242,7 @@ And some pseudocode for what the view does when `for_each` is called:
 
 ```
 for (EntityIndex in Pool(B)) {
-	if (Pool(A).contains(EntityIndex) and Pool(B).contains(EntityIndex))
+	if (Pool(A).contains(EntityIndex) and Pool(C).contains(EntityIndex))
 		executeLambda();
 }
 ```
