@@ -225,7 +225,7 @@ This is probably the most common way you'll access entities; by specifying a gro
 ```cpp
 auto view = ecs.view<A, B>();
 
-view.for_each([](Entity entity, A& a, B& b) { '
+view.for_each([](Entity entity, A& a, B& b) {
 	//... 
 });
 ```
